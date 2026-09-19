@@ -106,16 +106,50 @@ if uploaded_file is not None:
 
 st.divider()
 
-# 6. UI: 나의 다이어리 앨범 뷰
-st.subheader("📖 나의 앨범")
+# 6. UI: 나의 반려주식 도감 뷰 (종목별 그룹화)
+st.subheader("📖 나의 반려주식 도감")
+
 if not db:
     st.write("아직 다이어리에 기록된 주식이 없어요. 파일을 업로드하고 이름을 지어주세요!")
 else:
-    for uid, data in reversed(list(db.items())):
+    # 1. DB의 데이터를 '종목명' 기준으로 하나로 묶습니다.
+    portfolio = {}
+    for uid, data in db.items():
+        name = data['name']
+        qty = float(data.get('qty', 0))
+        # 금액 데이터에 콤마가 있을 경우를 대비한 안전한 정수 변환
+        total_price = float(str(data.get('total_price', 0)).replace(',', ''))
+        
+        if name not in portfolio:
+            portfolio[name] = {'total_qty': 0, 'total_invested': 0, 'memories': []}
+            
+        portfolio[name]['total_qty'] += qty
+        portfolio[name]['total_invested'] += total_price
+        portfolio[name]['memories'].append(data)
+        
+    # 2. 묶인 종목들을 화면에 예쁘게 출력합니다.
+    for name, info in portfolio.items():
+        # 평단가 계산 (총 투자금액 / 총 수량)
+        avg_price = info['total_invested'] / info['total_qty'] if info['total_qty'] > 0 else 0
+        
+        # 💡 [핵심] 현재가와 등락률 (현재는 UI 시연을 위해 임시 계산식을 넣습니다)
+        current_price = avg_price * 1.05 # 임시로 5% 성장했다고 가정
+        return_rate = ((current_price - avg_price) / avg_price) * 100
+        
+        # 카드 디자인 렌더링
         st.markdown(f"""
-        <div style="background-color:#F9F9F7; padding:20px; border-radius:15px; margin-bottom:15px; border: 1px solid #EAEAEA;">
-            <h3 style="margin-top:0px;">{data['emoji']} {data['title']}</h3>
-            <p style="color:gray; font-size:14px;">{data['name']} {data['qty']}주 입양일: {data['date']}</p>
-            <p style="font-size:16px;"><i>"{data['memo']}"</i></p>
+        <div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
+            <p style="font-size:16px; color:#555;">
+                <b>보유 수량:</b> {info['total_qty']:,.2f}주 &nbsp;|&nbsp; 
+                <b>평단가:</b> {avg_price:,.0f}원 &nbsp;|&nbsp; 
+                <b>현재 수익률:</b> <span style="color:#FF4B4B; font-weight:bold;">+{return_rate:.1f}%</span>
+            </p>
+            <hr style="border:1px solid #EAEAEA;">
+            <p style="font-size:14px; color:#888; margin-bottom:5px;">나의 입양 기록 📝</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        # 해당 종목에 달아둔 매수 메모들을 시간순으로 보여줍니다.
+        for mem in info['memories']:
+            st.info(f"{mem['emoji']} **{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
