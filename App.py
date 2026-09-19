@@ -4,9 +4,16 @@ import json
 import os
 import yfinance as yf
 
-# 1. 내 추억을 저장할 로컬 DB 파일 설정
-DB_FILE = 'my_stock_diary.json'
+# 1. 페이지 설정
+st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
+st.title("🌱 나의 반려주식 다이어리")
+st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
+# 2. 데이터베이스 설정 (두 개의 뇌: 일기장 DB + 티커 학습 DB)
+DB_FILE = 'my_stock_diary.json'
+TICKER_FILE = 'ticker_db.json'
+
+# --- 기존 다이어리 DB ---
 def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, 'r', encoding='utf-8') as f:
@@ -19,10 +26,18 @@ def save_db(data):
 
 db = load_db()
 
-# 2. UI 기본 설정
-st.set_page_config(page_title="나의 반려주식 다이어리 펫스톡", page_icon="🌱", layout="centered")
-st.title("🌱 나의 반려주식 다이어리")
-st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
+# --- 🌟 티커를 기억하는 새로운 뇌 ---
+def load_ticker_db():
+    if os.path.exists(TICKER_FILE):
+        with open(TICKER_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_ticker_db(data):
+    with open(TICKER_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+ticker_db = load_ticker_db()
 
 # 3. 데이터 업로드 및 파싱 (표 자동 인식 및 빈 파일 방어 기능 추가)
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
