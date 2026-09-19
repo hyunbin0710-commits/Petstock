@@ -1,0 +1,91 @@
+import streamlit as st
+import pandas as pd
+import json
+import os
+
+# 1. 내 추억을 저장할 로컬 DB 파일 설정
+DB_FILE = 'my_stock_diary.json'
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_db(data):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+db = load_db()
+
+# 2. UI 기본 설정
+st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱", layout="centered")
+st.title("🌱 나의 반려주식 다이어리")
+st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
+
+# 3. CSV 데이터 업로드 및 파싱
+uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv'])
+
+if uploaded_file is not None:
+    # 데이터 읽기 (멀티 헤더 등 NH증권 특성 처리)
+    df = pd.read_csv(uploaded_file, header=0)
+    
+    # '거래유형'이 '매수'인 것만 필터링
+    # (첫 번째 줄에 종목명이 있으므로 고유코드 기준으로 중복 제거하여 첫 줄만 가져옴)
+    buys_df = df[df['[merged] 거래유형'] == '매수'].drop_duplicates(subset=['[merged] 고유코드'], keep='first')
+    
+    unregistered_stocks = []
+    
+    # 4. DB와 대조하여 새 주식 찾기
+    for index, row in buys_df.iterrows():
+        uid = str(row['[merged] 고유코드'])
+        if uid not in db:
+            unregistered_stocks.append({
+                'uid': uid,
+                'date': row['[merged] 실거래일자'],
+                'name': row['[merged] 종목명'],
+                'qty': row['수량'],
+                'total_price': row['거래금액']
+            })
+            
+    # 5. UI: 새 주식 입양소 (이름 지어주기)
+    if unregistered_stocks:
+        st.subheader("💌 새로운 반려주식이 도착했어요!")
+        for stock in unregistered_stocks:
+            with st.expander(f"✨ {stock['name']} {stock['qty']}주 ({stock['date']})"):
+                with st.form(key=f"form_{stock['uid']}"):
+                    title = st.text_input("이 주식의 이름을 지어주세요 (예: 첫 월급 기념)")
+                    memo = st.text_area("어떤 다짐이나 추억으로 샀나요?")
+                    emoji = st.selectbox("오늘의 기분", ["😎", "🥳", "🥺", "🔥", "💸", "🌱"])
+                    
+                    submit = st.form_submit_button("도장 찍고 다이어리에 넣기")
+                    if submit and title:
+                        db[stock['uid']] = {
+                            "date": stock['date'],
+                            "name": stock['name'],
+                            "qty": stock['qty'],
+                            "title": title,
+                            "memo": memo,
+                            "emoji": emoji
+                        }
+                        save_db(db)
+                        st.success("저장되었습니다! 새로고침을 눌러주세요.")
+                        st.rerun()
+    else:
+        st.info("새로 이름 지어줄 주식이 없습니다. 앨범을 확인해보세요!")
+
+st.divider()
+
+# 6. UI: 나의 다이어리 앨범 뷰
+st.subheader("📖 나의 앨범")
+if not db:
+    st.write("아직 다이어리에 기록된 주식이 없어요. 파일을 업로드하고 이름을 지어주세요!")
+else:
+    for uid, data in reversed(list(db.items())):
+        st.markdown(f"""
+        <div style="background-color:#F9F9F7; padding:20px; border-radius:15px; margin-bottom:15px; border: 1px solid #EAEAEA;">
+            <h3 style="margin-top:0px;">{data['emoji']} {data['title']}</h3>
+            <p style="color:gray; font-size:14px;">{data['name']} {data['qty']}주 입양일: {data['date']}</p>
+            <p style="font-size:16px;"><i>"{data['memo']}"</i></p>
+        </div>
+        """, unsafe_allow_html=True)
