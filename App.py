@@ -10,8 +10,8 @@ st.title("🌱 나의 반려주식 다이어리")
 st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
 # 2. 데이터베이스 설정 (두 개의 뇌: 일기장 DB + 티커 학습 DB)
-DB_FILE = 'my_stock_diary.json'
-TICKER_FILE = 'ticker_db.json'
+DB_FILE = 'my_stock_diary_v2.json'
+TICKER_FILE = 'ticker_db_v2.json'
 
 # --- 기존 다이어리 DB ---
 def load_db():
