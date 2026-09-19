@@ -23,32 +23,40 @@ st.set_page_config(page_title="나의 반려주식 다이어리 펫스톡", page
 st.title("🌱 나의 반려주식 다이어리")
 st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# 3. CSV 데이터 업로드 및 파싱
+# 3. 데이터 업로드 및 파싱
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
-    # ⭐️ 파일 이름이 .csv로 끝나면 read_csv로, 아니면 read_excel로 읽도록 구분!
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, header=0)
     else:
         df = pd.read_excel(uploaded_file, header=0)
     
-    # '거래유형'이 '매수'인 것만 필터링
-    buys_df = df[df['[merged] 거래유형'] == '매수'].drop_duplicates(subset=['[merged] 고유코드'], keep='first')
+    # 💡 마법의 코드: 엑셀 컬럼명에 '[merged] '가 묻어있다면 깔끔하게 지워줍니다.
+    df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
     
-    unregistered_stocks = []
-    
-    # 4. DB와 대조하여 새 주식 찾기
-    for index, row in buys_df.iterrows():
-        uid = str(row['[merged] 고유코드'])
-        if uid not in db:
-            unregistered_stocks.append({
-                'uid': uid,
-                'date': row['[merged] 실거래일자'],
-                'name': row['[merged] 종목명'],
-                'qty': row['수량'],
-                'total_price': row['거래금액']
-            })
+    try:
+        # 4. DB와 대조하여 새 주식 찾기 (깔끔해진 이름 사용)
+        buys_df = df[df['거래유형'] == '매수'].drop_duplicates(subset=['고유코드'], keep='first')
+        
+        unregistered_stocks = []
+        
+        for index, row in buys_df.iterrows():
+            uid = str(row['고유코드'])
+            if uid not in db:
+                unregistered_stocks.append({
+                    'uid': uid,
+                    'date': row['실거래일자'],
+                    'name': row['종목명'],
+                    'qty': row['수량'],
+                    # 엑셀 다운로드 버전에 따라 금액 이름이 다를 수 있어 안전장치 추가
+                    'total_price': row.get('거래금액', row.get('정산금액', 0))
+                })
+                
+    except KeyError as e:
+        # 만약 컬럼 이름이 또 맞지 않는다면, 에러 대신 현재 엑셀의 진짜 기둥 이름들을 화면에 보여줍니다.
+        st.error(f"엑셀 파일에서 {e} 기둥을 찾을 수 없습니다.")
+        st.warning(f"현재 업로드된 파일이 가진 기둥 이름들: {df.columns.tolist()}")
             
     # 5. UI: 새 주식 입양소 (이름 지어주기)
     if unregistered_stocks:
