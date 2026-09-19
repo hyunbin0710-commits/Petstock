@@ -27,19 +27,20 @@ st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어�
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
+    # 💡 NameError 방지: 에러가 나더라도 밑에서 쓸 수 있게 빈 리스트를 맨 먼저 만듭니다.
+    unregistered_stocks = []
+    
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, header=0)
     else:
         df = pd.read_excel(uploaded_file, header=0)
     
-    # 💡 마법의 코드: 엑셀 컬럼명에 '[merged] '가 묻어있다면 깔끔하게 지워줍니다.
+    # 컬럼명에 있는 '[merged] ' 글자와 양옆 공백을 지워서 깔끔하게 만듭니다.
     df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
     
     try:
-        # 4. DB와 대조하여 새 주식 찾기 (깔끔해진 이름 사용)
+        # 4. DB와 대조하여 새 주식 찾기
         buys_df = df[df['거래유형'] == '매수'].drop_duplicates(subset=['고유코드'], keep='first')
-        
-        unregistered_stocks = []
         
         for index, row in buys_df.iterrows():
             uid = str(row['고유코드'])
@@ -49,16 +50,16 @@ if uploaded_file is not None:
                     'date': row['실거래일자'],
                     'name': row['종목명'],
                     'qty': row['수량'],
-                    # 엑셀 다운로드 버전에 따라 금액 이름이 다를 수 있어 안전장치 추가
                     'total_price': row.get('거래금액', row.get('정산금액', 0))
                 })
                 
     except KeyError as e:
-        # 만약 컬럼 이름이 또 맞지 않는다면, 에러 대신 현재 엑셀의 진짜 기둥 이름들을 화면에 보여줍니다.
         st.error(f"엑셀 파일에서 {e} 기둥을 찾을 수 없습니다.")
-        st.warning(f"현재 업로드된 파일이 가진 기둥 이름들: {df.columns.tolist()}")
-            
-    # 5. UI: 새 주식 입양소 (이름 지어주기)
+        st.warning(f"현재 파이썬이 읽어낸 기둥 이름들: {df.columns.tolist()}")
+        st.info("💡 팁: 다운받으신 엑셀 파일(Petstock.xlsx)을 열어서 맨 위쪽에 있는 쓸데없는 설명(계좌번호, 기간 등) 행을 삭제하고, '실거래일자', '거래유형' 같은 표 머리글이 엑셀의 제일 첫 번째 줄(1행)에 오도록 저장한 뒤 다시 올려주세요!")
+
+# 5. UI: 새 주식 입양소 (이름 지어주기)
+if uploaded_file is not None:
     if unregistered_stocks:
         st.subheader("💌 새로운 반려주식이 도착했어요!")
         for stock in unregistered_stocks:
