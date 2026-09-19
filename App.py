@@ -19,7 +19,7 @@ def save_db(data):
 db = load_db()
 
 # 2. UI 기본 설정
-st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱", layout="centered")
+st.set_page_config(page_title="나의 반려주식 다이어리 펫스톡", page_icon="🌱", layout="centered")
 st.title("🌱 나의 반려주식 다이어리")
 st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
