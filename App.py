@@ -183,5 +183,15 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
+        # 💡 [추가된 기능] 티커가 누락된 경우 도감에서 바로 입력할 수 있게 도와줍니다.
+        if not ticker_symbol:
+            with st.form(key=f"rescue_{name}"):
+                st.warning("앗! 이 주식의 티커가 누락되었습니다. 실시간 주가를 보려면 티커를 알려주세요.")
+                new_ticker = st.text_input("티커 (예: SPLG)", key=f"input_{name}")
+                if st.form_submit_button("티커 저장"):
+                    ticker_db[name] = new_ticker.strip().upper()
+                    save_ticker_db(ticker_db)
+                    st.rerun()
+                    
         for mem in info['memories']:
             st.info(f"{mem['emoji']} **{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
