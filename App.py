@@ -24,7 +24,7 @@ st.title("🌱 나의 반려주식 다이어리")
 st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
 # 3. CSV 데이터 업로드 및 파싱
-uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv'])
+uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
     # 데이터 읽기 (멀티 헤더 등 NH증권 특성 처리)
