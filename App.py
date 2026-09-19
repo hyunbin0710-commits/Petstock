@@ -113,15 +113,6 @@ st.subheader("📖 나의 반려주식 도감")
 if not db:
     st.write("아직 다이어리에 기록된 주식이 없어요. 파일을 업로드하고 이름을 지어주세요!")
 else:
-    # 💡 엑셀에 적힌 한글 종목명을 실제 주식 티커(심볼)로 바꿔주는 통역 사전입니다.
-    # 새로운 주식을 살 때마다 여기에 이름을 추가해 주시면 됩니다.
-    # (미국 주식은 티커 그대로, 한국 주식은 종목코드 뒤에 .KS를 붙입니다)
-    ticker_map = {
-        "SPDR S&P500 포트폴리오 ETF": "SPLG", 
-        "삼성전자": "005930.KS",
-        "Apple": "AAPL"
-    }
-
     # 1. DB의 데이터를 '종목명' 기준으로 하나로 묶습니다.
     portfolio = {}
     for uid, data in db.items():
@@ -139,34 +130,28 @@ else:
     # 2. 묶인 종목들을 화면에 출력하며 실시간 가격을 계산합니다.
     for name, info in portfolio.items():
         avg_price = info['total_invested'] / info['total_qty'] if info['total_qty'] > 0 else 0
-        
         current_price = 0
-        ticker_symbol = ticker_map.get(name, "")
         
-        # yfinance를 통해 실시간 현재가를 가져옵니다.
+        # 💡 코드를 열어볼 필요 없이 시스템이 학습한 ticker_db에서 꺼내옵니다.
+        ticker_symbol = ticker_db.get(name, "")
+        
         if ticker_symbol:
             try:
                 ticker_info = yf.Ticker(ticker_symbol)
-                # fast_info를 사용해 가장 빠르게 현재가만 긁어옵니다.
                 current_price = ticker_info.fast_info['last_price']
-            except Exception as e:
+            except Exception:
                 current_price = 0
                 
-        # 수익률을 계산하고 UI에 색상을 입힙니다.
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
-            
-            # 수익이면 빨간색(+), 손실이면 파란색(-)으로 표시
             color = "#FF4B4B" if return_rate > 0 else "#4B4BFF"
             sign = "+" if return_rate > 0 else ""
-            
             price_text = f"{current_price:,.2f}"
             return_text = f"<span style='color:{color}; font-weight:bold;'>{sign}{return_rate:.1f}%</span>"
         else:
             price_text = "조회 불가"
-            return_text = "<span style='color:gray; font-size:12px;'>(티커사전 업데이트 필요)</span>"
+            return_text = "<span style='color:gray; font-size:12px;'>(티커 확인 필요)</span>"
             
-        # 카드 디자인 렌더링
         st.markdown(f"""
         <div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
@@ -181,6 +166,5 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # 메모 출력
         for mem in info['memories']:
             st.info(f"{mem['emoji']} **{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
