@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import yfinance as yf
 
 # 1. 내 추억을 저장할 로컬 DB 파일 설정
 DB_FILE = 'my_stock_diary.json'
@@ -106,18 +107,26 @@ if uploaded_file is not None:
 
 st.divider()
 
-# 6. UI: 나의 반려주식 도감 뷰 (종목별 그룹화)
+# 6. UI: 나의 반려주식 도감 뷰 (실시간 수익률 적용)
 st.subheader("📖 나의 반려주식 도감")
 
 if not db:
     st.write("아직 다이어리에 기록된 주식이 없어요. 파일을 업로드하고 이름을 지어주세요!")
 else:
+    # 💡 엑셀에 적힌 한글 종목명을 실제 주식 티커(심볼)로 바꿔주는 통역 사전입니다.
+    # 새로운 주식을 살 때마다 여기에 이름을 추가해 주시면 됩니다.
+    # (미국 주식은 티커 그대로, 한국 주식은 종목코드 뒤에 .KS를 붙입니다)
+    ticker_map = {
+        "SPDR S&P500 포트폴리오 ETF": "SPLG", 
+        "삼성전자": "005930.KS",
+        "Apple": "AAPL"
+    }
+
     # 1. DB의 데이터를 '종목명' 기준으로 하나로 묶습니다.
     portfolio = {}
     for uid, data in db.items():
         name = data['name']
         qty = float(data.get('qty', 0))
-        # 금액 데이터에 콤마가 있을 경우를 대비한 안전한 정수 변환
         total_price = float(str(data.get('total_price', 0)).replace(',', ''))
         
         if name not in portfolio:
@@ -127,29 +136,51 @@ else:
         portfolio[name]['total_invested'] += total_price
         portfolio[name]['memories'].append(data)
         
-    # 2. 묶인 종목들을 화면에 예쁘게 출력합니다.
+    # 2. 묶인 종목들을 화면에 출력하며 실시간 가격을 계산합니다.
     for name, info in portfolio.items():
-        # 평단가 계산 (총 투자금액 / 총 수량)
         avg_price = info['total_invested'] / info['total_qty'] if info['total_qty'] > 0 else 0
         
-        # 💡 [핵심] 현재가와 등락률 (현재는 UI 시연을 위해 임시 계산식을 넣습니다)
-        current_price = avg_price * 1.05 # 임시로 5% 성장했다고 가정
-        return_rate = ((current_price - avg_price) / avg_price) * 100
+        current_price = 0
+        ticker_symbol = ticker_map.get(name, "")
         
+        # yfinance를 통해 실시간 현재가를 가져옵니다.
+        if ticker_symbol:
+            try:
+                ticker_info = yf.Ticker(ticker_symbol)
+                # fast_info를 사용해 가장 빠르게 현재가만 긁어옵니다.
+                current_price = ticker_info.fast_info['last_price']
+            except Exception as e:
+                current_price = 0
+                
+        # 수익률을 계산하고 UI에 색상을 입힙니다.
+        if current_price > 0 and avg_price > 0:
+            return_rate = ((current_price - avg_price) / avg_price) * 100
+            
+            # 수익이면 빨간색(+), 손실이면 파란색(-)으로 표시
+            color = "#FF4B4B" if return_rate > 0 else "#4B4BFF"
+            sign = "+" if return_rate > 0 else ""
+            
+            price_text = f"{current_price:,.2f}"
+            return_text = f"<span style='color:{color}; font-weight:bold;'>{sign}{return_rate:.1f}%</span>"
+        else:
+            price_text = "조회 불가"
+            return_text = "<span style='color:gray; font-size:12px;'>(티커사전 업데이트 필요)</span>"
+            
         # 카드 디자인 렌더링
         st.markdown(f"""
         <div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
             <p style="font-size:16px; color:#555;">
                 <b>보유 수량:</b> {info['total_qty']:,.2f}주 &nbsp;|&nbsp; 
-                <b>평단가:</b> {avg_price:,.0f}원 &nbsp;|&nbsp; 
-                <b>현재 수익률:</b> <span style="color:#FF4B4B; font-weight:bold;">+{return_rate:.1f}%</span>
+                <b>평단가:</b> {avg_price:,.2f} &nbsp;|&nbsp; 
+                <b>현재가:</b> {price_text} &nbsp;|&nbsp; 
+                <b>수익률:</b> {return_text}
             </p>
             <hr style="border:1px solid #EAEAEA;">
             <p style="font-size:14px; color:#888; margin-bottom:5px;">나의 입양 기록 📝</p>
         </div>
         """, unsafe_allow_html=True)
         
-        # 해당 종목에 달아둔 매수 메모들을 시간순으로 보여줍니다.
+        # 메모 출력
         for mem in info['memories']:
             st.info(f"{mem['emoji']} **{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
