@@ -27,11 +27,13 @@ st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어�
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
-    # 데이터 읽기 (멀티 헤더 등 NH증권 특성 처리)
-    df = pd.read_csv(uploaded_file, header=0)
+    # ⭐️ 파일 이름이 .csv로 끝나면 read_csv로, 아니면 read_excel로 읽도록 구분!
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file, header=0)
+    else:
+        df = pd.read_excel(uploaded_file, header=0)
     
     # '거래유형'이 '매수'인 것만 필터링
-    # (첫 번째 줄에 종목명이 있으므로 고유코드 기준으로 중복 제거하여 첫 줄만 가져옴)
     buys_df = df[df['[merged] 거래유형'] == '매수'].drop_duplicates(subset=['[merged] 고유코드'], keep='first')
     
     unregistered_stocks = []
