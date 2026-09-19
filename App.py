@@ -2,45 +2,33 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import requests
+import yfinance as yf
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
 st.title("🌱 나의 반려주식 다이어리")
 st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# --- 🌟 해결사: 네이버증권(Naver Finance) API 연결 ---
+# --- 🌟 해결사: 야후 파이낸스 (스마트 티커 인식) ---
 def get_current_price(ticker):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-    # .KS 등 불필요한 기호 제거 (한국 주식용)
-    clean_ticker = ticker.replace('.KS', '').replace('.KQ', '').strip().upper()
+    clean_ticker = ticker.strip().upper()
     
-    # 1. 미국 주식 먼저 찔러보기 (네이버 모바일 해외주식 API)
-    us_url = f"https://m.stock.naver.com/front-api/v1/overseas/item/{clean_ticker}/basic"
-    try:
-        res = requests.get(us_url, headers=headers, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get('isSuccess') and data.get('result'):
-                price_str = str(data['result'].get('closePrice', '0')).replace(',', '')
-                return float(price_str)
-    except:
-        pass
+    # 💡 숫자로만 된 6자리 코드(예: 005930)면 자동으로 한국 코스피(.KS)를 붙여줍니다.
+    if clean_ticker.isdigit() and len(clean_ticker) == 6:
+        clean_ticker += ".KS"
         
-    # 2. 없다면 한국 주식 찔러보기 (네이버 모바일 국내주식 API)
-    kr_url = f"https://m.stock.naver.com/api/stock/{clean_ticker}/integration"
     try:
-        res = requests.get(kr_url, headers=headers, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            if 'dealInfo' in data:
-                price_str = str(data['dealInfo'].get('closePrice', '0')).replace(',', '')
-                return float(price_str)
-    except:
-        pass
-        
+        ticker_obj = yf.Ticker(clean_ticker)
+        # 가장 빠르고 안정적인 fast_info 방식으로 현재가를 가져옵니다.
+        return float(ticker_obj.fast_info['last_price'])
+    except Exception:
+        try:
+            # 실패 시 차트 데이터(history)에서 긁어오는 플랜 B
+            hist = ticker_obj.history(period="1d")
+            if not hist.empty:
+                return float(hist['Close'].iloc[-1])
+        except:
+            pass
     return 0
 
 # 2. 데이터베이스 설정
@@ -134,7 +122,7 @@ if uploaded_file is not None:
                     known_ticker = ticker_db.get(stock['name'], "")
                     ticker_input = ""
                     if not known_ticker:
-                        st.caption("⚠️ 실시간 수익률 계산을 위해 티커를 알려주세요! (미국: AAPL, 한국: 005930)")
+                        st.caption("⚠️ 실시간 수익률을 위해 티커를 적어주세요 (예: 미국 SPYM, 한국 005930)")
                         ticker_input = st.text_input("티커/종목코드")
                     
                     submit = st.form_submit_button("도장 찍고 다이어리에 넣기")
@@ -187,7 +175,7 @@ else:
         if ticker_symbol:
             current_price = get_current_price(ticker_symbol)
             if current_price == 0:
-                error_msg = "네이버증권에서 가격을 찾지 못했습니다. 티커(종목코드)가 맞는지 확인해주세요."
+                error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
                 
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
@@ -218,8 +206,7 @@ else:
         
         with st.expander(f"⚙️ '{name}' 티커 설정/수정 (현재: {ticker_symbol if ticker_symbol else '없음'})"):
             with st.form(key=f"rescue_{name}"):
-                # 네이버 기준이므로 아주 심플하게 입력 가능합니다.
-                new_ticker = st.text_input("티커 (미국: SPLG, 한국: 005930)", value=ticker_symbol, key=f"input_{name}")
+                new_ticker = st.text_input("티커 (예: 미국 SPYM, 한국 005930)", value=ticker_symbol, key=f"input_{name}")
                 if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
