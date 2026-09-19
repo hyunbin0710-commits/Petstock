@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import yfinance as yf
+import FinanceDataReader as fdr
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
@@ -153,22 +153,20 @@ else:
         ticker_symbol = ticker_db.get(name, "")
         error_msg = ""
         
-        # 💡 [핵심] 야후 파이낸스의 404 차단 에러를 우회하는 강력한 다운로드 방식으로 변경합니다.
+        # 💡 [핵심] 차단당한 yfinance 대신 강력한 FinanceDataReader(fdr)를 사용합니다.
         if ticker_symbol:
             try:
-                # 최근 5일치 데이터를 통째로 다운로드하여 가장 마지막(최근) 가격을 뽑아냅니다.
-                # (이 방식이 야후 서버의 차단을 가장 잘 피해갑니다)
-                data = yf.download(ticker_symbol, period="5d", progress=False)
+                # fdr은 한국 주식(005930), 미국 주식(SPLG) 모두 그냥 텍스트만 넣으면 알아서 찾아옵니다!
+                data = fdr.DataReader(ticker_symbol)
                 
                 if not data.empty:
-                    # 데이터가 정상적으로 들어왔다면 종가(Close)의 맨 마지막 값을 가져옵니다.
-                    current_price = float(data['Close'].iloc[-1].squeeze())
+                    current_price = float(data['Close'].iloc[-1])
                 else:
                     current_price = 0
-                    error_msg = "야후 파이낸스에서 해당 티커의 데이터를 주지 않습니다."
+                    error_msg = "데이터를 찾을 수 없습니다. 티커를 확인해주세요."
             except Exception as e:
                 current_price = 0
-                error_msg = f"통신 에러: {str(e)}"
+                error_msg = f"에러: {str(e)}"
                 
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
@@ -199,7 +197,8 @@ else:
         
         with st.expander(f"⚙️ '{name}' 티커 설정/수정 (현재: {ticker_symbol if ticker_symbol else '없음'})"):
             with st.form(key=f"rescue_{name}"):
-                new_ticker = st.text_input("티커 (예: SPLG, 한국주식은 005930.KS)", value=ticker_symbol, key=f"input_{name}")
+                # 이제 한국 주식에 .KS를 붙일 필요가 없습니다. 편하게 숫자만 입력하세요!
+                new_ticker = st.text_input("티커 (예: 미국주식 SPLG, 한국주식 005930)", value=ticker_symbol, key=f"input_{name}")
                 if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
