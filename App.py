@@ -2,14 +2,48 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import FinanceDataReader as fdr
+import requests
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
 st.title("🌱 나의 반려주식 다이어리")
 st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# 2. 데이터베이스 설정 (v3로 완전 초기화)
+# --- 🌟 해결사: 네이버증권(Naver Finance) API 연결 ---
+def get_current_price(ticker):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    # .KS 등 불필요한 기호 제거 (한국 주식용)
+    clean_ticker = ticker.replace('.KS', '').replace('.KQ', '').strip().upper()
+    
+    # 1. 미국 주식 먼저 찔러보기 (네이버 모바일 해외주식 API)
+    us_url = f"https://m.stock.naver.com/front-api/v1/overseas/item/{clean_ticker}/basic"
+    try:
+        res = requests.get(us_url, headers=headers, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('isSuccess') and data.get('result'):
+                price_str = str(data['result'].get('closePrice', '0')).replace(',', '')
+                return float(price_str)
+    except:
+        pass
+        
+    # 2. 없다면 한국 주식 찔러보기 (네이버 모바일 국내주식 API)
+    kr_url = f"https://m.stock.naver.com/api/stock/{clean_ticker}/integration"
+    try:
+        res = requests.get(kr_url, headers=headers, timeout=3)
+        if res.status_code == 200:
+            data = res.json()
+            if 'dealInfo' in data:
+                price_str = str(data['dealInfo'].get('closePrice', '0')).replace(',', '')
+                return float(price_str)
+    except:
+        pass
+        
+    return 0
+
+# 2. 데이터베이스 설정
 DB_FILE = 'my_stock_diary_v3.json'
 TICKER_FILE = 'ticker_db_v3.json'
 
@@ -67,13 +101,11 @@ if uploaded_file is not None:
                 df = df[header_idx + 1:].reset_index(drop=True)
                 df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
                 
-                # 4. DB와 대조하여 새 주식 찾기
                 buys_df = df[df['거래유형'] == '매수'].drop_duplicates(subset=['고유코드'], keep='first')
                 
                 for index, row in buys_df.iterrows():
                     uid = str(row['고유코드'])
                     if uid not in db:
-                        # 💡 숫자 데이터(금액, 수량)의 쉼표(,)를 제거하고 숫자로 변환해서 저장합니다.
                         qty = float(str(row['수량']).replace(',', ''))
                         raw_price = row.get('거래금액', row.get('정산금액', row.get('매수금액', 0)))
                         total_price = float(str(raw_price).replace(',', ''))
@@ -99,11 +131,10 @@ if uploaded_file is not None:
                     memo = st.text_area("어떤 다짐이나 추억으로 샀나요?")
                     emoji = st.selectbox("오늘의 기분", ["😎", "🥳", "🥺", "🔥", "💸", "🌱"])
                     
-                    # 💡 티커를 물어보는 조건 명확화
                     known_ticker = ticker_db.get(stock['name'], "")
                     ticker_input = ""
                     if not known_ticker:
-                        st.caption("⚠️ 실시간 수익률 계산을 위해 티커를 한 번만 알려주세요! (예: AAPL, 한국주식은 005930.KS)")
+                        st.caption("⚠️ 실시간 수익률 계산을 위해 티커를 알려주세요! (미국: AAPL, 한국: 005930)")
                         ticker_input = st.text_input("티커/종목코드")
                     
                     submit = st.form_submit_button("도장 찍고 다이어리에 넣기")
@@ -153,20 +184,10 @@ else:
         ticker_symbol = ticker_db.get(name, "")
         error_msg = ""
         
-        # 💡 [핵심] 차단당한 yfinance 대신 강력한 FinanceDataReader(fdr)를 사용합니다.
         if ticker_symbol:
-            try:
-                # fdr은 한국 주식(005930), 미국 주식(SPLG) 모두 그냥 텍스트만 넣으면 알아서 찾아옵니다!
-                data = fdr.DataReader(ticker_symbol)
-                
-                if not data.empty:
-                    current_price = float(data['Close'].iloc[-1])
-                else:
-                    current_price = 0
-                    error_msg = "데이터를 찾을 수 없습니다. 티커를 확인해주세요."
-            except Exception as e:
-                current_price = 0
-                error_msg = f"에러: {str(e)}"
+            current_price = get_current_price(ticker_symbol)
+            if current_price == 0:
+                error_msg = "네이버증권에서 가격을 찾지 못했습니다. 티커(종목코드)가 맞는지 확인해주세요."
                 
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
@@ -197,8 +218,8 @@ else:
         
         with st.expander(f"⚙️ '{name}' 티커 설정/수정 (현재: {ticker_symbol if ticker_symbol else '없음'})"):
             with st.form(key=f"rescue_{name}"):
-                # 이제 한국 주식에 .KS를 붙일 필요가 없습니다. 편하게 숫자만 입력하세요!
-                new_ticker = st.text_input("티커 (예: 미국주식 SPLG, 한국주식 005930)", value=ticker_symbol, key=f"input_{name}")
+                # 네이버 기준이므로 아주 심플하게 입력 가능합니다.
+                new_ticker = st.text_input("티커 (미국: SPLG, 한국: 005930)", value=ticker_symbol, key=f"input_{name}")
                 if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
