@@ -23,19 +23,31 @@ st.set_page_config(page_title="나의 반려주식 다이어리 펫스톡", page
 st.title("🌱 나의 반려주식 다이어리")
 st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# 3. 데이터 업로드 및 파싱
+# 3. 데이터 업로드 및 파싱 (표 자동 인식 기능 추가)
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
-    # 💡 NameError 방지: 에러가 나더라도 밑에서 쓸 수 있게 빈 리스트를 맨 먼저 만듭니다.
     unregistered_stocks = []
     
+    # 우선 기둥 이름(Header) 구분 없이 엑셀 전체를 다 읽어옵니다.
     if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file, header=0)
+        df = pd.read_csv(uploaded_file, header=None)
     else:
-        df = pd.read_excel(uploaded_file, header=0)
+        df = pd.read_excel(uploaded_file, header=None)
     
-    # 컬럼명에 있는 '[merged] ' 글자와 양옆 공백을 지워서 깔끔하게 만듭니다.
+    # 💡 마법의 코드: 위에서부터 15줄을 뒤져서 '거래유형'이라는 단어가 있는 줄을 진짜 표의 시작점으로 잡습니다.
+    header_idx = 0
+    for i in range(min(15, len(df))):
+        row_str = "".join(df.iloc[i].fillna('').astype(str))
+        if '거래유형' in row_str or '종목명' in row_str:
+            header_idx = i
+            break
+            
+    # 찾아낸 진짜 줄을 기둥 이름(컬럼)으로 만들고, 그 윗줄들은 날려버립니다.
+    df.columns = df.iloc[header_idx]
+    df = df[header_idx + 1:].reset_index(drop=True)
+    
+    # 이름에 묻어있는 '[merged] ' 글자와 양옆 공백을 깔끔하게 제거합니다.
     df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
     
     try:
@@ -56,8 +68,6 @@ if uploaded_file is not None:
     except KeyError as e:
         st.error(f"엑셀 파일에서 {e} 기둥을 찾을 수 없습니다.")
         st.warning(f"현재 파이썬이 읽어낸 기둥 이름들: {df.columns.tolist()}")
-        st.info("💡 팁: 다운받으신 엑셀 파일(Petstock.xlsx)을 열어서 맨 위쪽에 있는 쓸데없는 설명(계좌번호, 기간 등) 행을 삭제하고, '실거래일자', '거래유형' 같은 표 머리글이 엑셀의 제일 첫 번째 줄(1행)에 오도록 저장한 뒤 다시 올려주세요!")
-
 # 5. UI: 새 주식 입양소 (이름 지어주기)
 if uploaded_file is not None:
     if unregistered_stocks:
