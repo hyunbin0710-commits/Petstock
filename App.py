@@ -23,51 +23,60 @@ st.set_page_config(page_title="나의 반려주식 다이어리 펫스톡", page
 st.title("🌱 나의 반려주식 다이어리")
 st.markdown("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# 3. 데이터 업로드 및 파싱 (표 자동 인식 기능 추가)
+# 3. 데이터 업로드 및 파싱 (표 자동 인식 및 빈 파일 방어 기능 추가)
 uploaded_file = st.file_uploader("NH투자증권 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
     unregistered_stocks = []
     
-    # 우선 기둥 이름(Header) 구분 없이 엑셀 전체를 다 읽어옵니다.
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file, header=None)
-    else:
-        df = pd.read_excel(uploaded_file, header=None)
-    
-    # 💡 마법의 코드: 위에서부터 15줄을 뒤져서 '거래유형'이라는 단어가 있는 줄을 진짜 표의 시작점으로 잡습니다.
-    header_idx = 0
-    for i in range(min(15, len(df))):
-        row_str = "".join(df.iloc[i].fillna('').astype(str))
-        if '거래유형' in row_str or '종목명' in row_str:
-            header_idx = i
-            break
-            
-    # 찾아낸 진짜 줄을 기둥 이름(컬럼)으로 만들고, 그 윗줄들은 날려버립니다.
-    df.columns = df.iloc[header_idx]
-    df = df[header_idx + 1:].reset_index(drop=True)
-    
-    # 이름에 묻어있는 '[merged] ' 글자와 양옆 공백을 깔끔하게 제거합니다.
-    df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
-    
     try:
-        # 4. DB와 대조하여 새 주식 찾기
-        buys_df = df[df['거래유형'] == '매수'].drop_duplicates(subset=['고유코드'], keep='first')
+        # 파일 형식에 맞춰 전체 데이터를 불러옵니다.
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file, header=None)
+        else:
+            # 엑셀은 다중 시트일 가능성이 있어 명확히 첫 번째 시트를 가져옵니다.
+            xls = pd.ExcelFile(uploaded_file)
+            df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], header=None)
         
-        for index, row in buys_df.iterrows():
-            uid = str(row['고유코드'])
-            if uid not in db:
-                unregistered_stocks.append({
-                    'uid': uid,
-                    'date': row['실거래일자'],
-                    'name': row['종목명'],
-                    'qty': row['수량'],
-                    'total_price': row.get('거래금액', row.get('정산금액', 0))
-                })
-                
+        # 데이터가 텅 비어있는지 확인하는 안전장치
+        if len(df) == 0:
+            st.error("업로드하신 파일에 데이터가 없습니다. 빈 파일이 아닌지 확인해 주세요.")
+        else:
+            # 위에서부터 15줄을 뒤져서 '거래유형'이나 '종목명'이 있는 줄을 찾습니다.
+            header_idx = 0
+            for i in range(min(15, len(df))):
+                row_str = "".join(df.iloc[i].fillna('').astype(str))
+                if '거래유형' in row_str or '종목명' in row_str:
+                    header_idx = i
+                    break
+                    
+            # 찾아낸 진짜 줄을 기둥 이름(컬럼)으로 만들고, 그 윗줄들은 날려버립니다.
+            df.columns = df.iloc[header_idx]
+            df = df[header_idx + 1:].reset_index(drop=True)
+            
+            # 이름에 묻어있는 '[merged] ' 글자와 양옆 공백을 깔끔하게 제거합니다.
+            df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
+            
+            # 4. DB와 대조하여 새 주식 찾기
+            buys_df = df[df['거래유형'] == '매수'].drop_duplicates(subset=['고유코드'], keep='first')
+            
+            for index, row in buys_df.iterrows():
+                uid = str(row['고유코드'])
+                if uid not in db:
+                    unregistered_stocks.append({
+                        'uid': uid,
+                        'date': row['실거래일자'],
+                        'name': row['종목명'],
+                        'qty': row['수량'],
+                        'total_price': row.get('거래금액', row.get('정산금액', 0))
+                    })
+                    
     except KeyError as e:
         st.error(f"엑셀 파일에서 {e} 기둥을 찾을 수 없습니다.")
         st.warning(f"현재 파이썬이 읽어낸 기둥 이름들: {df.columns.tolist()}")
+    except Exception as e:
+        st.error(f"파일을 분석하는 중 에러가 발생했습니다: {e}")
+        
 # 5. UI: 새 주식 입양소 (이름 지어주기)
 if uploaded_file is not None:
     if unregistered_stocks:
