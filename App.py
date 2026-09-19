@@ -152,12 +152,24 @@ else:
         current_price = 0
         ticker_symbol = ticker_db.get(name, "")
         
+        # 💡 [핵심] 주가 불러오기 방식을 2중 안전장치로 강화합니다.
+        error_msg = ""
         if ticker_symbol:
             try:
                 ticker_info = yf.Ticker(ticker_symbol)
-                current_price = ticker_info.fast_info['last_price']
-            except Exception:
+                try:
+                    # 1순위: 가장 빠른 방법 시도
+                    current_price = float(ticker_info.fast_info['last_price'])
+                except:
+                    # 2순위: 실패하면 일반 차트(history) 데이터로 재시도
+                    hist = ticker_info.history(period="1d")
+                    if not hist.empty:
+                        current_price = float(hist['Close'].iloc[-1])
+                    else:
+                        current_price = 0
+            except Exception as e:
                 current_price = 0
+                error_msg = str(e) # 진짜 에러 원인을 화면에 띄우기 위해 저장
                 
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
@@ -167,7 +179,7 @@ else:
             return_text = f"<span style='color:{color}; font-weight:bold;'>{sign}{return_rate:.1f}%</span>"
         else:
             price_text = "조회 불가"
-            return_text = "<span style='color:gray; font-size:12px;'>(티커 확인 필요)</span>"
+            return_text = f"<span style='color:gray; font-size:12px;'>(현재 등록된 티커: {ticker_symbol if ticker_symbol else '없음'})</span>"
             
         st.markdown(f"""
         <div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -183,12 +195,15 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # 💡 [추가된 기능] 티커가 누락된 경우 도감에서 바로 입력할 수 있게 도와줍니다.
-        if not ticker_symbol:
+        # 💡 [추가] 통신 에러가 났을 때 빨간 창으로 진짜 이유를 알려줍니다.
+        if error_msg:
+            st.error(f"야후 파이낸스에서 가격을 가져오지 못했습니다. 에러 원인: {error_msg}")
+        
+        # 💡 [추가] 언제든지 티커를 고치거나 새로 넣을 수 있는 '톱니바퀴' 메뉴를 엽니다.
+        with st.expander(f"⚙️ '{name}' 티커 설정/수정 (현재: {ticker_symbol if ticker_symbol else '없음'})"):
             with st.form(key=f"rescue_{name}"):
-                st.warning("앗! 이 주식의 티커가 누락되었습니다. 실시간 주가를 보려면 티커를 알려주세요.")
-                new_ticker = st.text_input("티커 (예: SPLG)", key=f"input_{name}")
-                if st.form_submit_button("티커 저장"):
+                new_ticker = st.text_input("티커 (예: SPLG, 005930.KS)", value=ticker_symbol, key=f"input_{name}")
+                if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
                     st.rerun()
