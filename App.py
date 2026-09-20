@@ -9,6 +9,7 @@ from datetime import datetime
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식, 펫스톡", page_icon="🪴")
 st.title("🪴 나의 반려주식, 펫스톡")
+# (요청하신 대로 서브 타이틀 caption은 심플함을 위해 제거했습니다)
 
 # --- 🌟 야후 파이낸스 직통 연결 (현재가 조회용) ---
 def get_current_price(ticker):
@@ -219,13 +220,15 @@ else:
             
         portfolio[name]['total_qty'] += qty
         portfolio[name]['total_invested'] += total_price
+        
+        # 기록(메모) 배열에 uid를 같이 저장하여 나중에 수정 폼에서 사용합니다.
+        data['uid'] = uid 
         portfolio[name]['memories'].append(data)
         
     for name, info in portfolio.items():
         avg_price = info['total_invested'] / info['total_qty'] if info['total_qty'] > 0 else 0
         current_price = 0
         ticker_symbol = ticker_db.get(name, "")
-        error_msg = ""
         
         date_objects = []
         for mem in info['memories']:
@@ -247,60 +250,83 @@ else:
         
         if ticker_symbol:
             current_price = get_current_price(ticker_symbol)
-            if current_price == 0:
-                error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
-                
-        # 💡 [핵심] 불필요한 감성 텍스트를 제거하고 심플하게 %만 표시
+            
+        # 💡 [핵심] 보유수량, 평가손익, 매입가 + 수익률, 평단가 계산
         if current_price > 0 and avg_price > 0:
+            unrealized_pl = (current_price * info['total_qty']) - info['total_invested']
             return_rate = ((current_price - avg_price) / avg_price) * 100
+            
             if return_rate > 0:
-                mood_html = f'<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">+{return_rate:.1f}%</span>'
-                point_color = "#FF9AA2"
+                mood = f"🥰 +{return_rate:.1f}%"
+                pl_color = "#FF7B7B"
+                pl_text = f"+{unrealized_pl:,.2f}"
             elif return_rate < 0:
-                mood_html = f'<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">{return_rate:.1f}%</span>'
-                point_color = "#A2C2FF"
+                mood = f"😭 {return_rate:.1f}%"
+                pl_color = "#6B90D8"
+                pl_text = f"{unrealized_pl:,.2f}"
             else:
-                mood_html = f'<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">0.0%</span>'
-                point_color = "#EAEAEA"
+                mood = "🤔 0.0%"
+                pl_color = "#888888"
+                pl_text = "0.00"
         else:
-            mood_html = '<span style="font-size:20px;">💤</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">-</span>'
-            point_color = "#EAEAEA"
-            
-        memories_html = ""
-        for mem in info['memories']:
-            title = mem.get('title', '')
-            date = mem.get('date', '')
-            memo = mem.get('memo', '')
-            memories_html += f'<div style="background-color:#FFFFFF; padding:15px; border-radius:12px; margin-top:12px; border-left: 5px solid {point_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.02);"><div style="font-size:14px; color:#4A4A4A; font-weight:bold;">{title} <span style="font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;">{date}</span></div><div style="font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;">"{memo}"</div></div>'
-            
-        html_card = f"""<div style="background-color:#FAF8F5; padding:25px; border-radius:20px; margin-bottom:25px; box-shadow:0px 4px 10px rgba(0,0,0,0.05); border:1px solid #EFEBE4;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="margin:0; color:#5C4B4B; font-size:22px;">🪴 {name}</h3><div style="background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold;">{days_text}</div></div><div style="color:#6D6060; font-size:15px; margin-bottom:20px; line-height:1.8;"><b>보유 수량:</b> {info['total_qty']:,.2f}주 <br><b>평단가:</b> {avg_price:,.2f} <span style="margin: 0 10px; color:#D5D5D5;">|</span> <b>현재가:</b> {current_price:,.2f} <br><div style="margin-top:12px; padding:10px 15px; background-color:#FFFFFF; border-radius:12px; display:inline-block; border:1px dashed #E5E0D8;"><b>오늘의 기분:</b> {mood_html}</div></div><div style="border-top:2px dashed #EFEBE4; padding-top:15px;">{memories_html}</div></div>"""
+            unrealized_pl = 0
+            return_rate = 0
+            mood = "💤 -"
+            pl_color = "#888888"
+            pl_text = "-"
         
-        st.markdown(html_card, unsafe_allow_html=True)
-        
-        if error_msg and ticker_symbol:
-            st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
-        
-        # 💡 [핵심] 설정 메뉴 안에 티커 변경뿐만 아니라 '기록(이름, 메모) 수정' 기능을 추가했습니다.
-        with st.expander(f"⚙️ '{name}' 설정 (티커 및 기록 수정)"):
-            st.markdown("**1. 티커(종목코드) 수정**")
-            with st.form(key=f"rescue_{name}"):
-                new_ticker = st.text_input("수동 변경", value=ticker_symbol, key=f"input_{name}")
-                if st.form_submit_button("티커 저장"):
-                    ticker_db[name] = new_ticker.strip().upper()
-                    save_ticker_db(ticker_db)
-                    st.rerun()
-            
-            st.markdown("---")
-            st.markdown("**2. 내 기록 수정**")
-            # 현재 종목에 해당하는 기록(메모)들만 모아서 수정 폼을 제공합니다.
-            for uid_key, data_val in db.items():
-                if data_val['name'] == name:
-                    with st.form(key=f"edit_{uid_key}"):
-                        st.caption(f"📅 매수일: {data_val['date']} | 💰 수량: {data_val['qty']}주")
-                        new_title = st.text_input("이름 (타이틀)", value=data_val.get('title', ''))
-                        new_memo = st.text_area("추억/다짐 (메모)", value=data_val.get('memo', ''))
-                        if st.form_submit_button("기록 수정 저장"):
-                            db[uid_key]['title'] = new_title
-                            db[uid_key]['memo'] = new_memo
-                            save_db(db)
+        # 💡 [핵심] 주식 하나당 하나의 컴팩트한 카드(Container)를 만듭니다.
+        with st.container(border=True):
+            # 1. 헤더 (이름, 티커, 수정 아이콘, D-Day)
+            col_t1, col_t2, col_t3 = st.columns([6, 1, 3])
+            with col_t1:
+                st.markdown(f"<h3 style='margin:0; padding-top:5px; color:#4A4A4A;'>🪴 {name} <span style='font-size:14px; color:#A0A0A0; font-weight:normal; margin-left:5px;'>{ticker_symbol}</span></h3>", unsafe_allow_html=True)
+            with col_t2:
+                with st.popover("✏️"):
+                    with st.form(key=f"tkr_form_{name}"):
+                        new_ticker = st.text_input("새 티커 입력", value=ticker_symbol)
+                        if st.form_submit_button("티커 저장"):
+                            ticker_db[name] = new_ticker.strip().upper()
+                            save_ticker_db(ticker_db)
                             st.rerun()
+            with col_t3:
+                st.markdown(f"<div style='background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; text-align:center; margin-top:3px;'>{days_text}</div>", unsafe_allow_html=True)
+
+            # 2. 컴팩트 정보 패널 (2줄 요약 그리드)
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-around; background-color:#FAFAFA; padding: 15px; border-radius: 12px; border: 1px solid #EFEBE4; margin-top: 15px; margin-bottom: 20px;">
+                <div style="text-align: center; flex:1;">
+                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">보유 수량</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A;">{info['total_qty']:,.2f}주</div>
+                </div>
+                <div style="text-align: center; flex:1;">
+                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">평가손익</div>
+                    <div style="font-size: 16px; font-weight: bold; color: {pl_color};">{pl_text}</div>
+                    <div style="font-size: 14px; font-weight: bold; color: {pl_color}; margin-top: 3px;">{mood}</div>
+                </div>
+                <div style="text-align: center; flex:1;">
+                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">매입가</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A;">{info['total_invested']:,.2f}</div>
+                    <div style="font-size: 13px; color: #888; margin-top: 3px;">평단가: {avg_price:,.2f}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 3. 다이어리 기록들 (각각 우측 상단에 수정 버튼 배치)
+            for mem in info['memories']:
+                uid_key = mem['uid']
+                with st.container(border=True):
+                    r_col1, r_col2 = st.columns([11, 1])
+                    with r_col1:
+                        st.markdown(f"<div style='font-size:14px; color:#4A4A4A; font-weight:bold;'>{mem['title']} <span style='font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;'>{mem['date']}</span></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;'>\"{mem['memo']}\"</div>", unsafe_allow_html=True)
+                    with r_col2:
+                        with st.popover("✏️"):
+                            with st.form(key=f"edit_form_{uid_key}"):
+                                new_title = st.text_input("이름 (타이틀)", value=mem.get('title',''))
+                                new_memo = st.text_area("다짐/메모", value=mem.get('memo',''))
+                                if st.form_submit_button("기록 저장"):
+                                    db[uid_key]['title'] = new_title
+                                    db[uid_key]['memo'] = new_memo
+                                    save_db(db)
+                                    st.rerun()
