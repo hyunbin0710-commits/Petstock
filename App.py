@@ -4,40 +4,14 @@ import json
 import os
 import requests
 import re
+import yfinance as yf
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
 st.title("🌱 나의 반려주식 다이어리")
 st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# --- 🌟 증권사별 종목명 ➔ 티커 자동 번역 사전 ---
-# 사용자가 선택한 증권사에 따라 엑셀의 한글 종목명을 실제 티커로 번역합니다.
-AUTO_TICKER_MAP = {
-    "NH투자증권": {
-        "SPDR S&P500 포트폴리오 ETF": "SPYM",
-        "INVESCO QQQ TRUST SRS 1 ETF": "QQQ",
-        "애플": "AAPL",
-        "테슬라": "TSLA",
-        "엔비디아": "NVDA",
-        "마이크로소프트": "MSFT",
-        "알파벳 A": "GOOGL",
-        "삼성전자": "005930",
-        "SK하이닉스": "000660"
-    },
-    "키움증권": {
-        "SPDR S&P 500 ETF TRUST": "SPY",
-        "애플": "AAPL",
-        "테슬라": "TSLA",
-        "삼성전자": "005930"
-    },
-    "토스증권": {
-        "Apple": "AAPL",
-        "Tesla": "TSLA",
-        "삼성전자": "005930"
-    }
-}
-
-# --- 🌟 야후 파이낸스 직통 연결 ---
+# --- 🌟 야후 파이낸스 직통 연결 (현재가 조회용) ---
 def get_current_price(ticker):
     clean_ticker = ticker.strip().upper()
     if clean_ticker.isdigit() and len(clean_ticker) == 6:
@@ -45,7 +19,7 @@ def get_current_price(ticker):
         
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{clean_ticker}"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0'
     }
     try:
         res = requests.get(url, headers=headers, timeout=5)
@@ -83,7 +57,7 @@ def save_ticker_db(data):
 db = load_db()
 ticker_db = load_ticker_db()
 
-# --- 🌟 스마트 컬럼 탐색기 ---
+# --- 🌟 증권사 데이터 원본 해독기 (하드코딩 없음!) ---
 def find_col(columns, keywords):
     for col in columns:
         for kw in keywords:
@@ -93,16 +67,40 @@ def find_col(columns, keywords):
 
 def extract_auto_ticker(code_val):
     code_str = str(code_val).strip()
+    
+    # 1. 한국 주식 단축코드 (예: A005930 -> 005930.KS)
     if code_str.startswith('A') and len(code_str) == 7 and code_str[1:].isdigit():
-        return code_str[1:]
-    if re.match(r'^[A-Z0-9]+$', code_str) and len(code_str) <= 6:
+        return code_str[1:] + ".KS"
+        
+    # 2. 엑셀의 복잡한 문자열(예: 20260916094658US78464A8541) 속에서 ISIN(국제표준코드 12자리)만 족집게 추출
+    isin_match = re.search(r'([A-Z]{2}[A-Z0-9]{9}[0-9])', code_str)
+    if isin_match:
+        isin = isin_match.group(1)
+        # 💡 알아낸 ISIN을 야후 검색 서버에 던져서 실제 티커(예: SPYM, AAPL)로 동적 변환합니다.
+        url = f"https://query1.finance.yahoo.com/v1/finance/search?q={isin}"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        try:
+            res = requests.get(url, headers=headers, timeout=3)
+            if res.status_code == 200:
+                quotes = res.json().get('quotes', [])
+                if quotes:
+                    return quotes[0]['symbol']
+        except:
+            pass
+            
+    # 3. 6자리 숫자로만 되어있는 경우
+    if code_str.isdigit() and len(code_str) == 6:
+        return code_str + ".KS"
+        
+    # 4. 순수 알파벳 티커가 그대로 있는 경우
+    if re.match(r'^[A-Z]+$', code_str) and len(code_str) <= 5:
         return code_str
+        
     return ""
 
 # 3. 데이터 업로드 및 파싱
 st.markdown("### 📥 엑셀 업로드")
-broker = st.selectbox("이용 중인 증권사를 선택해주세요 (자동 인식에 사용됩니다)", ["NH투자증권", "키움증권", "토스증권", "기타 증권사"])
-uploaded_file = st.file_uploader(f"{broker} 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
+uploaded_file = st.file_uploader("증권사 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
     unregistered_stocks = []
@@ -154,20 +152,13 @@ if uploaded_file is not None:
                         qty = float(str(row[col_qty]).replace(',', '')) if col_qty else 0
                         total_price = float(str(row[col_price]).replace(',', '')) if col_price else 0
                         
-                        stock_name = str(row[col_name]).strip() if col_name else ""
-                        auto_ticker = ""
-                        
-                        # 💡 1순위: 증권사별 번역 사전에서 종목명으로 티커 찾기
-                        if broker in AUTO_TICKER_MAP and stock_name in AUTO_TICKER_MAP[broker]:
-                            auto_ticker = AUTO_TICKER_MAP[broker][stock_name]
-                        else:
-                            # 💡 2순위: 엑셀 고유코드 규칙으로 티커 찾기
-                            auto_ticker = extract_auto_ticker(row[col_code]) if col_code else ""
+                        # 하드코딩된 사전 없이 엑셀 내부 데이터에서 직접 티커를 역추적합니다!
+                        auto_ticker = extract_auto_ticker(row[col_code]) if col_code else ""
                         
                         unregistered_stocks.append({
                             'uid': uid,
                             'date': row[col_date] if col_date else '날짜 미상',
-                            'name': stock_name,
+                            'name': row[col_name] if col_name else '알 수 없는 종목',
                             'qty': qty,
                             'total_price': total_price,
                             'auto_ticker': auto_ticker
@@ -191,11 +182,10 @@ if uploaded_file is not None:
                     
                     if not known_ticker:
                         if auto_ticker:
-                            # 💡 앱이 사전을 통해 티커를 알아채면, 사용자에게 칭찬(?)을 받으며 자동으로 채워 넣습니다.
-                            st.success(f"🤖 {broker} 분석 완료: '{stock['name']}'의 티커는 [{auto_ticker}]입니다!")
+                            st.success(f"🤖 엑셀 데이터 해독 완료! 종목 코드를 추적하여 티커가 [{auto_ticker}]임을 알아냈습니다.")
                             ticker_input = st.text_input("티커 (자동 인식됨)", value=auto_ticker)
                         else:
-                            st.caption("⚠️ 티커 자동 인식에 실패했습니다. 직접 알려주세요!")
+                            st.caption("⚠️ 엑셀 원본에 국제표준코드가 없어 자동 인식에 실패했습니다. 직접 알려주세요!")
                             ticker_input = st.text_input("티커/종목코드")
                     
                     submit = st.form_submit_button("도장 찍고 다이어리에 넣기")
