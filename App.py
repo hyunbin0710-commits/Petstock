@@ -9,7 +9,6 @@ from datetime import datetime
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식, 펫스톡", page_icon="🪴")
 st.title("🪴 나의 반려주식, 펫스톡")
-# (요청하신 대로 서브 타이틀 caption은 심플함을 위해 제거했습니다)
 
 # --- 🌟 야후 파이낸스 직통 연결 (현재가 조회용) ---
 def get_current_price(ticker):
@@ -204,7 +203,7 @@ if uploaded_file is not None:
         st.info("새로 이름 지어줄 주식이 없습니다. 앨범을 확인해보세요!")
 
 # 6. UI: 나의 반려주식 도감 뷰
-st.subheader("📖 나의 반려주식 도감")
+st.subheader("📖 나의 반려주식")
 
 if not db:
     st.write("아직 다이어리에 기록된 주식이 없어요. 엑셀을 업로드하고 이름을 지어주세요!")
@@ -221,7 +220,6 @@ else:
         portfolio[name]['total_qty'] += qty
         portfolio[name]['total_invested'] += total_price
         
-        # 기록(메모) 배열에 uid를 같이 저장하여 나중에 수정 폼에서 사용합니다.
         data['uid'] = uid 
         portfolio[name]['memories'].append(data)
         
@@ -229,6 +227,7 @@ else:
         avg_price = info['total_invested'] / info['total_qty'] if info['total_qty'] > 0 else 0
         current_price = 0
         ticker_symbol = ticker_db.get(name, "")
+        error_msg = ""
         
         date_objects = []
         for mem in info['memories']:
@@ -250,8 +249,9 @@ else:
         
         if ticker_symbol:
             current_price = get_current_price(ticker_symbol)
-            
-        # 💡 [핵심] 보유수량, 평가손익, 매입가 + 수익률, 평단가 계산
+            if current_price == 0:
+                error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
+                
         if current_price > 0 and avg_price > 0:
             unrealized_pl = (current_price * info['total_qty']) - info['total_invested']
             return_rate = ((current_price - avg_price) / avg_price) * 100
@@ -275,12 +275,16 @@ else:
             pl_color = "#888888"
             pl_text = "-"
         
-        # 💡 [핵심] 주식 하나당 하나의 컴팩트한 카드(Container)를 만듭니다.
         with st.container(border=True):
-            # 1. 헤더 (이름, 티커, 수정 아이콘, D-Day)
+            # 💡 [헤더 파트] 주식명 한 줄 유지 & 티커 바로 옆 수정 아이콘 배치
             col_t1, col_t2, col_t3 = st.columns([6, 1, 3])
             with col_t1:
-                st.markdown(f"<h3 style='margin:0; padding-top:5px; color:#4A4A4A;'>🪴 {name} <span style='font-size:14px; color:#A0A0A0; font-weight:normal; margin-left:5px;'>{ticker_symbol}</span></h3>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 4px;">
+                    <h3 style='margin:0; color:#4A4A4A; display: inline;'>🪴 {name}</h3>
+                    <div style='font-size:13px; color:#A0A0A0; margin-top: 2px;'>{ticker_symbol}</div>
+                </div>
+                """, unsafe_allow_html=True)
             with col_t2:
                 with st.popover("✏️"):
                     with st.form(key=f"tkr_form_{name}"):
@@ -290,29 +294,49 @@ else:
                             save_ticker_db(ticker_db)
                             st.rerun()
             with col_t3:
-                st.markdown(f"<div style='background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; text-align:center; margin-top:3px;'>{days_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; text-align:center; margin-top: 2px;'>{days_text}</div>", unsafe_allow_html=True)
 
-            # 2. 컴팩트 정보 패널 (2줄 요약 그리드)
+            # 💡 [컴팩트 데이터 그리드] 엑셀과 완전히 똑같은 비율의 2줄 구조
             st.markdown(f"""
             <div style="display: flex; justify-content: space-around; background-color:#FAFAFA; padding: 15px; border-radius: 12px; border: 1px solid #EFEBE4; margin-top: 15px; margin-bottom: 20px;">
                 <div style="text-align: center; flex:1;">
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">보유 수량</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A;">{info['total_qty']:,.2f}주</div>
+                    <div style="font-size: 13px; color: #888; line-height: 1.6;">
+                        <br>잔고수량
+                    </div>
+                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A; margin-top: 4px;">
+                        {info['total_qty']:,.0f}주
+                    </div>
+                    <div style="font-size: 14px; margin-top: 4px;">&nbsp;</div>
                 </div>
                 <div style="text-align: center; flex:1;">
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">평가손익</div>
-                    <div style="font-size: 16px; font-weight: bold; color: {pl_color};">{pl_text}</div>
-                    <div style="font-size: 14px; font-weight: bold; color: {pl_color}; margin-top: 3px;">{mood}</div>
+                    <div style="font-size: 13px; color: #888; line-height: 1.6;">
+                        평가손익<br>수익률
+                    </div>
+                    <div style="font-size: 16px; font-weight: bold; color: {pl_color}; margin-top: 4px;">
+                        {pl_text}
+                    </div>
+                    <div style="font-size: 14px; font-weight: bold; color: {pl_color}; margin-top: 4px;">
+                        {mood}
+                    </div>
                 </div>
                 <div style="text-align: center; flex:1;">
-                    <div style="font-size: 13px; color: #888; margin-bottom: 5px;">매입가</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A;">{info['total_invested']:,.2f}</div>
-                    <div style="font-size: 13px; color: #888; margin-top: 3px;">평단가: {avg_price:,.2f}</div>
+                    <div style="font-size: 13px; color: #888; line-height: 1.6;">
+                        매입가<br>현재가
+                    </div>
+                    <div style="font-size: 16px; font-weight: bold; color: #4A4A4A; margin-top: 4px;">
+                        {info['total_invested']:,.2f}
+                    </div>
+                    <div style="font-size: 14px; font-weight: bold; color: #4A4A4A; margin-top: 4px;">
+                        {current_price:,.2f}
+                    </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            # 3. 다이어리 기록들 (각각 우측 상단에 수정 버튼 배치)
+            if error_msg and ticker_symbol:
+                st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
+            
+            # 💡 [다이어리 파트] 각 기록 우측 상단에 인라인(✏️) 수정 아이콘을 배치합니다.
             for mem in info['memories']:
                 uid_key = mem['uid']
                 with st.container(border=True):
