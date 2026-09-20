@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import yfinance as yf
+import requests
 import re
 
 # 1. 페이지 설정
@@ -10,22 +10,25 @@ st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="�
 st.title("🌱 나의 반려주식 다이어리")
 st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
 
-# --- 🌟 야후 파이낸스 통신 모듈 ---
+# --- 🌟 해결사: 야후 파이낸스 직통 연결 (설치 오류 원천 차단) ---
 def get_current_price(ticker):
     clean_ticker = ticker.strip().upper()
+    
+    # 한국 주식 코드는 알아서 .KS를 붙여줍니다.
     if clean_ticker.isdigit() and len(clean_ticker) == 6:
         clean_ticker += ".KS"
         
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{clean_ticker}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     try:
-        ticker_obj = yf.Ticker(clean_ticker)
-        return float(ticker_obj.fast_info['last_price'])
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            return float(data['chart']['result'][0]['meta']['regularMarketPrice'])
     except Exception:
-        try:
-            hist = ticker_obj.history(period="1d")
-            if not hist.empty:
-                return float(hist['Close'].iloc[-1])
-        except:
-            pass
+        pass
     return 0
 
 # 2. 데이터베이스 설정
@@ -65,17 +68,15 @@ def find_col(columns, keywords):
 
 def extract_auto_ticker(code_val):
     code_str = str(code_val).strip()
-    # 한국 주식 (예: NH증권은 A005930 형태로 출력함) -> 'A' 떼고 005930만 추출
     if code_str.startswith('A') and len(code_str) == 7 and code_str[1:].isdigit():
         return code_str[1:]
-    # 미국 주식 (예: SPYM, AAPL 등 순수 영문/숫자 티커)
     if re.match(r'^[A-Z0-9]+$', code_str) and len(code_str) <= 6:
         return code_str
     return ""
 
 # 3. 데이터 업로드 및 파싱
 st.markdown("### 📥 엑셀 업로드")
-broker = st.selectbox("이용 중인 증권사를 선택해주세요 (컬럼 자동 인식에 사용됩니다)", ["NH투자증권", "키움증권", "토스증권", "기타 증권사"])
+broker = st.selectbox("이용 중인 증권사를 선택해주세요 (자동 인식에 사용됩니다)", ["NH투자증권", "키움증권", "토스증권", "기타 증권사"])
 uploaded_file = st.file_uploader(f"{broker} 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
@@ -95,7 +96,6 @@ if uploaded_file is not None:
         
         if df is not None and len(df) > 0:
             header_idx = -1
-            # 표의 머리글 찾기 (범위 확장)
             for i in range(min(30, len(df))):
                 row_str = "".join(df.iloc[i].fillna('').astype(str))
                 if '종목' in row_str or '수량' in row_str:
@@ -107,7 +107,6 @@ if uploaded_file is not None:
                 df = df[header_idx + 1:].reset_index(drop=True)
                 df.columns = [str(col).replace('[merged] ', '').strip() for col in df.columns]
                 
-                # 💡 증권사 상관없이 알아서 핵심 기둥(컬럼)을 찾아냅니다!
                 col_type = find_col(df.columns, ['거래유형', '매매구분', '구분', '종류'])
                 col_code = find_col(df.columns, ['고유코드', '종목코드', '단축코드'])
                 col_date = find_col(df.columns, ['실거래일자', '체결일', '거래일', '일자'])
@@ -115,13 +114,11 @@ if uploaded_file is not None:
                 col_qty = find_col(df.columns, ['수량', '체결수량'])
                 col_price = find_col(df.columns, ['거래금액', '정산금액', '약정금액', '매수금액'])
                 
-                # 매수 내역만 필터링
                 if col_type:
                     buys_df = df[df[col_type].astype(str).str.contains('매수')].copy()
                 else:
-                    buys_df = df.copy() # 구분 컬럼이 없으면 일단 전부 가져옵니다.
+                    buys_df = df.copy()
                 
-                # 중복 방지를 위한 고유 ID 설정 (코드가 없으면 이름으로 대체)
                 if col_code:
                     buys_df = buys_df.drop_duplicates(subset=[col_code], keep='first')
                 
@@ -131,8 +128,6 @@ if uploaded_file is not None:
                     if uid not in db:
                         qty = float(str(row[col_qty]).replace(',', '')) if col_qty else 0
                         total_price = float(str(row[col_price]).replace(',', '')) if col_price else 0
-                        
-                        # 💡 엑셀 안의 숨겨진 코드를 추출하여 티커로 변환합니다.
                         auto_ticker = extract_auto_ticker(row[col_code]) if col_code else ""
                         
                         unregistered_stocks.append({
@@ -141,7 +136,7 @@ if uploaded_file is not None:
                             'name': row[col_name] if col_name else '알 수 없는 종목',
                             'qty': qty,
                             'total_price': total_price,
-                            'auto_ticker': auto_ticker # 발견된 자동 티커 저장
+                            'auto_ticker': auto_ticker
                         })
     except Exception as e:
         st.error(f"파일 분석 중 에러가 발생했습니다: {e}")
@@ -163,7 +158,6 @@ if uploaded_file is not None:
                     
                     if not known_ticker:
                         if auto_ticker:
-                            # 💡 엑셀에서 티커를 자동 발견하면 입력창을 숨기고 사용자에게 칭찬(?)을 받습니다.
                             st.success(f"🤖 똑똑한 시스템이 엑셀에서 이 종목의 티커({auto_ticker})를 자동으로 인식했습니다! 따로 입력하실 필요 없습니다.")
                             ticker_input = auto_ticker
                         else:
