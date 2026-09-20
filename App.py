@@ -7,9 +7,8 @@ import re
 from datetime import datetime
 
 # 1. 페이지 설정
-st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🪴")
-st.title("🪴 나의 반려주식 다이어리")
-st.caption("딱딱한 주식 계좌를 나만의 따뜻한 추억 앨범으로 만들어보세요.")
+st.set_page_config(page_title="나의 반려주식, 펫스톡", page_icon="🪴")
+st.title("🪴 나의 반려주식, 펫스톡")
 
 # --- 🌟 야후 파이낸스 직통 연결 (현재가 조회용) ---
 def get_current_price(ticker):
@@ -132,6 +131,7 @@ if uploaded_file is not None:
                 col_qty = find_col(df.columns, ['수량', '체결수량'])
                 col_price = find_col(df.columns, ['거래금액', '정산금액', '약정금액', '매수금액'])
                 
+                # 💡 추후 API 연동 시 전량 매도를 자동 판별하기 위한 뼈대 구조입니다.
                 if col_type:
                     buys_df = df[df[col_type].astype(str).str.contains('매수')].copy()
                 else:
@@ -228,7 +228,6 @@ else:
         ticker_symbol = ticker_db.get(name, "")
         error_msg = ""
         
-        # 💡 [핵심] 최초 매수일 계산 (D-Day 카운트)
         date_objects = []
         for mem in info['memories']:
             try:
@@ -252,75 +251,42 @@ else:
             if current_price == 0:
                 error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
                 
-        # 💡 [핵심] 수익률을 감성적인 표정 이모지로 변환
+        # 💡 [핵심 업데이트] 이모지와 실제 수익률 숫자를 함께 표시합니다.
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
             if return_rate > 0:
-                mood_html = '<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">(따뜻해요!)</span>'
-                point_color = "#FF9AA2" # 따뜻한 핑크
+                mood_html = f'<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">+{return_rate:.1f}% (따뜻해요!)</span>'
+                point_color = "#FF9AA2"
             elif return_rate < 0:
-                mood_html = '<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">(슬퍼요...)</span>'
-                point_color = "#A2C2FF" # 차분한 블루
+                mood_html = f'<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">{return_rate:.1f}% (슬퍼요...)</span>'
+                point_color = "#A2C2FF"
             else:
-                mood_html = '<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">(평온함)</span>'
+                mood_html = f'<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">0.0% (평온함)</span>'
                 point_color = "#EAEAEA"
         else:
             mood_html = '<span style="font-size:20px;">💤</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">(현재가 모름)</span>'
             point_color = "#EAEAEA"
             
-        # 다이어리 속지 스타일 HTML 생성
+        # 💡 [핵심 업데이트] 줄바꿈(엔터)을 완벽히 제거하여 마크다운 렌더링 오류(검은 화면)를 방지합니다.
         memories_html = ""
         for mem in info['memories']:
             title = mem.get('title', '')
             date = mem.get('date', '')
             memo = mem.get('memo', '')
-            memories_html += f"""
-<div style="background-color:#FFFFFF; padding:15px; border-radius:12px; margin-top:12px; border-left: 5px solid {point_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-<div style="font-size:14px; color:#4A4A4A; font-weight:bold;">{title} <span style="font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;">{date}</span></div>
-<div style="font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;">"{memo}"</div>
-</div>
-"""
+            memories_html += f'<div style="background-color:#FFFFFF; padding:15px; border-radius:12px; margin-top:12px; border-left: 5px solid {point_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.02);"><div style="font-size:14px; color:#4A4A4A; font-weight:bold;">{title} <span style="font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;">{date}</span></div><div style="font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;">"{memo}"</div></div>'
             
-        # 💡 [핵심] 전체 카드를 크림톤(#FAF8F5)의 따뜻한 다이어리 느낌으로 디자인
-        st.markdown(f"""
-<div style="background-color:#FAF8F5; padding:25px; border-radius:20px; margin-bottom:25px; box-shadow:0px 4px 10px rgba(0,0,0,0.05); border:1px solid #EFEBE4;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-        <h3 style="margin:0; color:#5C4B4B; font-size:22px;">🪴 {name}</h3>
-        <div style="background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold;">
-            {days_text}
-        </div>
-    </div>
-    <div style="color:#6D6060; font-size:15px; margin-bottom:20px; line-height:1.8;">
-        <b>보유 수량:</b> {info['total_qty']:,.2f}주 <br>
-        <b>평단가:</b> {avg_price:,.2f} <span style="margin: 0 10px; color:#D5D5D5;">|</span> <b>현재가:</b> {current_price:,.2f} <br>
-        <div style="margin-top:12px; padding:10px 15px; background-color:#FFFFFF; border-radius:12px; display:inline-block; border:1px dashed #E5E0D8;">
-            <b>오늘의 기분:</b> {mood_html}
-        </div>
-    </div>
-    <div style="border-top:2px dashed #EFEBE4; padding-top:15px;">
-        <p style="font-size:14px; color:#9A8C8C; font-weight:bold; margin-bottom:5px;">나의 입양 기록 📝</p>
-        {memories_html}
-    </div>
-</div>
-""", unsafe_allow_html=True)
+        # "나의 입양 기록" 텍스트 삭제 및 깔끔한 HTML 구조 유지
+        html_card = f"""<div style="background-color:#FAF8F5; padding:25px; border-radius:20px; margin-bottom:25px; box-shadow:0px 4px 10px rgba(0,0,0,0.05); border:1px solid #EFEBE4;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="margin:0; color:#5C4B4B; font-size:22px;">🪴 {name}</h3><div style="background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold;">{days_text}</div></div><div style="color:#6D6060; font-size:15px; margin-bottom:20px; line-height:1.8;"><b>보유 수량:</b> {info['total_qty']:,.2f}주 <br><b>평단가:</b> {avg_price:,.2f} <span style="margin: 0 10px; color:#D5D5D5;">|</span> <b>현재가:</b> {current_price:,.2f} <br><div style="margin-top:12px; padding:10px 15px; background-color:#FFFFFF; border-radius:12px; display:inline-block; border:1px dashed #E5E0D8;"><b>오늘의 기분:</b> {mood_html}</div></div><div style="border-top:2px dashed #EFEBE4; padding-top:15px;">{memories_html}</div></div>"""
+        
+        st.markdown(html_card, unsafe_allow_html=True)
         
         if error_msg and ticker_symbol:
             st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
         
-        # 💡 [핵심] 전량 매도 및 티커 수정 메뉴
-        with st.expander(f"⚙️ '{name}' 설정 (티커 수정 및 매도)"):
+        with st.expander(f"⚙️ '{name}' 티커 설정"):
             with st.form(key=f"rescue_{name}"):
                 new_ticker = st.text_input("수동 변경 (자동 인식 오류 시 사용)", value=ticker_symbol, key=f"input_{name}")
                 if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
                     st.rerun()
-            
-            # 전부 매도한 경우 깔끔하게 기록을 리셋하는 버튼
-            st.caption("더 이상 이 주식과 함께하지 않는다면 아래 버튼을 눌러 기록을 마감하세요.")
-            if st.button("🗑️ 전량 매도 (기록 초기화)", key=f"sell_{name}"):
-                keys_to_delete = [k for k, v in db.items() if v['name'] == name]
-                for k in keys_to_delete:
-                    del db[k]
-                save_db(db)
-                st.rerun()
