@@ -4,11 +4,12 @@ import json
 import os
 import requests
 import re
+from datetime import datetime
 
 # 1. 페이지 설정
-st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
-st.title("🌱 나의 반려주식 다이어리")
-st.caption("딱딱한 주식 계좌를 나만의 추억 앨범으로 만들어보세요.")
+st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🪴")
+st.title("🪴 나의 반려주식 다이어리")
+st.caption("딱딱한 주식 계좌를 나만의 따뜻한 추억 앨범으로 만들어보세요.")
 
 # --- 🌟 야후 파이낸스 직통 연결 (현재가 조회용) ---
 def get_current_price(ticker):
@@ -93,7 +94,7 @@ def extract_auto_ticker(code_val):
     return ""
 
 # 3. 데이터 업로드 및 파싱
-st.markdown("### 📥 엑셀 업로드")
+st.markdown("### 💌 엑셀 업로드")
 uploaded_file = st.file_uploader("증권사 거래내역 CSV(엑셀) 파일을 올려주세요", type=['csv', 'xlsx'])
 
 if uploaded_file is not None:
@@ -162,7 +163,7 @@ if uploaded_file is not None:
 # 5. UI: 새 주식 입양소
 if uploaded_file is not None:
     if unregistered_stocks:
-        st.subheader("💌 새로운 반려주식이 도착했어요!")
+        st.subheader("📬 새로운 반려주식이 도착했어요!")
         for stock in unregistered_stocks:
             with st.expander(f"✨ {stock['name']} {stock['qty']:,.2f}주 ({stock['date']})"):
                 with st.form(key=f"form_{stock['uid']}"):
@@ -175,10 +176,10 @@ if uploaded_file is not None:
                     
                     if not known_ticker:
                         if auto_ticker:
-                            st.success(f"🤖 엑셀 데이터 해독 완료! 종목 코드를 추적하여 티커가 [{auto_ticker}]임을 알아냈습니다.")
+                            st.success(f"🤖 종목 코드를 추적하여 티커가 [{auto_ticker}]임을 알아냈습니다.")
                             ticker_input = st.text_input("티커 (자동 인식됨)", value=auto_ticker)
                         else:
-                            st.caption("⚠️ 엑셀 원본에 국제표준코드가 없어 자동 인식에 실패했습니다. 직접 알려주세요!")
+                            st.caption("⚠️ 국제표준코드가 없어 자동 인식에 실패했습니다. 직접 알려주세요!")
                             ticker_input = st.text_input("티커/종목코드")
                     
                     submit = st.form_submit_button("도장 찍고 다이어리에 넣기")
@@ -206,7 +207,7 @@ if uploaded_file is not None:
 st.subheader("📖 나의 반려주식 도감")
 
 if not db:
-    st.write("아직 다이어리에 기록된 주식이 없어요. 파일을 업로드하고 이름을 지어주세요!")
+    st.write("아직 다이어리에 기록된 주식이 없어요. 엑셀을 업로드하고 이름을 지어주세요!")
 else:
     portfolio = {}
     for uid, data in db.items():
@@ -227,56 +228,99 @@ else:
         ticker_symbol = ticker_db.get(name, "")
         error_msg = ""
         
+        # 💡 [핵심] 최초 매수일 계산 (D-Day 카운트)
+        date_objects = []
+        for mem in info['memories']:
+            try:
+                dt_str = mem['date'].replace('.', '-').strip()
+                dt = datetime.strptime(dt_str, '%Y-%m-%d').date()
+                date_objects.append(dt)
+            except:
+                pass
+                
+        if date_objects:
+            first_date = min(date_objects)
+            today = datetime.now().date()
+            days_together = (today - first_date).days + 1
+            if days_together < 1: days_together = 1
+            days_text = f"함께한 지 {days_together}일째 💖"
+        else:
+            days_text = "함께한 지 1일째 💖"
+        
         if ticker_symbol:
             current_price = get_current_price(ticker_symbol)
             if current_price == 0:
                 error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
                 
+        # 💡 [핵심] 수익률을 감성적인 표정 이모지로 변환
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
-            color = "#FF4B4B" if return_rate > 0 else "#4B4BFF"
-            sign = "+" if return_rate > 0 else ""
-            price_text = f"{current_price:,.2f}"
-            return_text = f"<span style='color:{color}; font-weight:bold;'>{sign}{return_rate:.1f}%</span>"
+            if return_rate > 0:
+                mood_html = '<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">(따뜻해요!)</span>'
+                point_color = "#FF9AA2" # 따뜻한 핑크
+            elif return_rate < 0:
+                mood_html = '<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">(슬퍼요...)</span>'
+                point_color = "#A2C2FF" # 차분한 블루
+            else:
+                mood_html = '<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">(평온함)</span>'
+                point_color = "#EAEAEA"
         else:
-            price_text = "조회 불가"
-            return_text = f"<span style='color:gray; font-size:12px;'>(현재 등록된 티커: {ticker_symbol if ticker_symbol else '없음'})</span>"
+            mood_html = '<span style="font-size:20px;">💤</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">(현재가 모름)</span>'
+            point_color = "#EAEAEA"
             
-        # 💡 [핵심 수정] HTML 태그 앞의 들여쓰기를 모두 제거하여 마크다운이 코드로 오해하지 않게 만들었습니다.
+        # 다이어리 속지 스타일 HTML 생성
         memories_html = ""
         for mem in info['memories']:
             title = mem.get('title', '')
             date = mem.get('date', '')
             memo = mem.get('memo', '')
             memories_html += f"""
-<div style="background-color:#F8F9FA; padding:15px; border-radius:10px; margin-top:10px; border-left: 4px solid #EAEAEA;">
-<div style="font-size:14px; color:#333; font-weight:bold;">{title} <span style="font-size:12px; color:#888; font-weight:normal; margin-left:5px;">({date})</span></div>
-<div style="font-size:14px; color:#555; margin-top:8px; line-height:1.5;">"{memo}"</div>
+<div style="background-color:#FFFFFF; padding:15px; border-radius:12px; margin-top:12px; border-left: 5px solid {point_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+<div style="font-size:14px; color:#4A4A4A; font-weight:bold;">{title} <span style="font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;">{date}</span></div>
+<div style="font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;">"{memo}"</div>
 </div>
 """
             
+        # 💡 [핵심] 전체 카드를 크림톤(#FAF8F5)의 따뜻한 다이어리 느낌으로 디자인
         st.markdown(f"""
-<div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-<h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
-<p style="font-size:16px; color:#555;">
-<b>보유 수량:</b> {info['total_qty']:,.2f}주 &nbsp;|&nbsp; 
-<b>평단가:</b> {avg_price:,.2f} &nbsp;|&nbsp; 
-<b>현재가:</b> {price_text} &nbsp;|&nbsp; 
-<b>수익률:</b> {return_text}
-</p>
-<hr style="border:1px solid #EAEAEA;">
-<p style="font-size:14px; color:#888; margin-bottom:10px;">나의 입양 기록 📝</p>
-{memories_html}
+<div style="background-color:#FAF8F5; padding:25px; border-radius:20px; margin-bottom:25px; box-shadow:0px 4px 10px rgba(0,0,0,0.05); border:1px solid #EFEBE4;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h3 style="margin:0; color:#5C4B4B; font-size:22px;">🪴 {name}</h3>
+        <div style="background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold;">
+            {days_text}
+        </div>
+    </div>
+    <div style="color:#6D6060; font-size:15px; margin-bottom:20px; line-height:1.8;">
+        <b>보유 수량:</b> {info['total_qty']:,.2f}주 <br>
+        <b>평단가:</b> {avg_price:,.2f} <span style="margin: 0 10px; color:#D5D5D5;">|</span> <b>현재가:</b> {current_price:,.2f} <br>
+        <div style="margin-top:12px; padding:10px 15px; background-color:#FFFFFF; border-radius:12px; display:inline-block; border:1px dashed #E5E0D8;">
+            <b>오늘의 기분:</b> {mood_html}
+        </div>
+    </div>
+    <div style="border-top:2px dashed #EFEBE4; padding-top:15px;">
+        <p style="font-size:14px; color:#9A8C8C; font-weight:bold; margin-bottom:5px;">나의 입양 기록 📝</p>
+        {memories_html}
+    </div>
 </div>
 """, unsafe_allow_html=True)
         
         if error_msg and ticker_symbol:
             st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
         
-        with st.expander(f"⚙️ '{name}' 티커 설정/수정 (현재: {ticker_symbol if ticker_symbol else '없음'})"):
+        # 💡 [핵심] 전량 매도 및 티커 수정 메뉴
+        with st.expander(f"⚙️ '{name}' 설정 (티커 수정 및 매도)"):
             with st.form(key=f"rescue_{name}"):
                 new_ticker = st.text_input("수동 변경 (자동 인식 오류 시 사용)", value=ticker_symbol, key=f"input_{name}")
                 if st.form_submit_button("티커 저장/수정"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
                     st.rerun()
+            
+            # 전부 매도한 경우 깔끔하게 기록을 리셋하는 버튼
+            st.caption("더 이상 이 주식과 함께하지 않는다면 아래 버튼을 눌러 기록을 마감하세요.")
+            if st.button("🗑️ 전량 매도 (기록 초기화)", key=f"sell_{name}"):
+                keys_to_delete = [k for k, v in db.items() if v['name'] == name]
+                for k in keys_to_delete:
+                    del db[k]
+                save_db(db)
+                st.rerun()
