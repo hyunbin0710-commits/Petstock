@@ -4,7 +4,6 @@ import json
 import os
 import requests
 import re
-import yfinance as yf
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나의 반려주식 다이어리", page_icon="🌱")
@@ -72,11 +71,11 @@ def extract_auto_ticker(code_val):
     if code_str.startswith('A') and len(code_str) == 7 and code_str[1:].isdigit():
         return code_str[1:] + ".KS"
         
-    # 2. 엑셀의 복잡한 문자열(예: 20260916094658US78464A8541) 속에서 ISIN(국제표준코드 12자리)만 족집게 추출
+    # 2. 엑셀의 복잡한 문자열 속에서 ISIN(국제표준코드 12자리)만 족집게 추출
     isin_match = re.search(r'([A-Z]{2}[A-Z0-9]{9}[0-9])', code_str)
     if isin_match:
         isin = isin_match.group(1)
-        # 💡 알아낸 ISIN을 야후 검색 서버에 던져서 실제 티커(예: SPYM, AAPL)로 동적 변환합니다.
+        # 💡 알아낸 ISIN을 야후 검색 서버에 던져서 실제 티커(예: SPYM)로 자동 번역해옵니다.
         url = f"https://query1.finance.yahoo.com/v1/finance/search?q={isin}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         try:
@@ -175,6 +174,8 @@ if uploaded_file is not None:
                 with st.form(key=f"form_{stock['uid']}"):
                     title = st.text_input("이 주식의 이름을 지어주세요 (예: 첫 월급 기념)")
                     memo = st.text_area("어떤 다짐이나 추억으로 샀나요?")
+                    
+                    # 💡 불필요했던 '오늘의 기분' 입력 칸을 완전히 삭제했습니다.
                     
                     known_ticker = ticker_db.get(stock['name'], "")
                     auto_ticker = stock.get('auto_ticker', '')
@@ -275,4 +276,6 @@ else:
                     st.rerun()
                     
         for mem in info['memories']:
-            st.info(f"**{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
+            # 기존 DB에 남아있던 이모지는 '💡'로 대체하거나 숨겨서 깔끔하게 출력합니다.
+            emoji = mem.get('emoji', '💡') 
+            st.info(f"{emoji} **{mem['title']}** ({mem['date']})\n\n\"{mem['memo']}\"")
