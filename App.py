@@ -203,7 +203,7 @@ if uploaded_file is not None:
         st.info("새로 이름 지어줄 주식이 없습니다. 앨범을 확인해보세요!")
 
 # 6. UI: 나의 반려주식 도감 뷰
-st.subheader("📖 나의 반려주식")
+st.subheader("📖 나의 반려주식 도감")
 
 if not db:
     st.write("아직 다이어리에 기록된 주식이 없어요. 엑셀을 업로드하고 이름을 지어주세요!")
@@ -276,13 +276,13 @@ else:
             pl_text = "-"
         
         with st.container(border=True):
-            # 💡 [헤더 파트] 주식명 한 줄 유지 & 티커 바로 옆 수정 아이콘 배치
-            col_t1, col_t2, col_t3 = st.columns([6, 1, 3])
+            # 💡 [헤더 파트 수정] 컬럼 비율 조정 및 CSS 강제 한 줄 적용
+            col_t1, col_t2, col_t3 = st.columns([7, 1, 2.5])
             with col_t1:
                 st.markdown(f"""
-                <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 4px;">
-                    <h3 style='margin:0; color:#4A4A4A; display: inline;'>🪴 {name}</h3>
-                    <div style='font-size:13px; color:#A0A0A0; margin-top: 2px;'>{ticker_symbol}</div>
+                <div style="width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 2px;">
+                    <span style='font-size: 22px; font-weight: bold; color:#4A4A4A;'>🪴 {name}</span>
+                    <div style='font-size:13px; color:#A0A0A0; margin-top: 4px;'>{ticker_symbol}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col_t2:
@@ -294,9 +294,9 @@ else:
                             save_ticker_db(ticker_db)
                             st.rerun()
             with col_t3:
-                st.markdown(f"<div style='background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; text-align:center; margin-top: 2px;'>{days_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold; text-align:center; margin-top: 4px;'>{days_text}</div>", unsafe_allow_html=True)
 
-            # 💡 [컴팩트 데이터 그리드] 엑셀과 완전히 똑같은 비율의 2줄 구조
+            # 💡 [컴팩트 데이터 그리드 수정] '매입가' 위치에 평균 매입가(평단가)가 들어가도록 수정
             st.markdown(f"""
             <div style="display: flex; justify-content: space-around; background-color:#FAFAFA; padding: 15px; border-radius: 12px; border: 1px solid #EFEBE4; margin-top: 15px; margin-bottom: 20px;">
                 <div style="text-align: center; flex:1;">
@@ -324,7 +324,7 @@ else:
                         매입가<br>현재가
                     </div>
                     <div style="font-size: 16px; font-weight: bold; color: #4A4A4A; margin-top: 4px;">
-                        {info['total_invested']:,.2f}
+                        {avg_price:,.2f}
                     </div>
                     <div style="font-size: 14px; font-weight: bold; color: #4A4A4A; margin-top: 4px;">
                         {current_price:,.2f}
@@ -336,7 +336,6 @@ else:
             if error_msg and ticker_symbol:
                 st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
             
-            # 💡 [다이어리 파트] 각 기록 우측 상단에 인라인(✏️) 수정 아이콘을 배치합니다.
             for mem in info['memories']:
                 uid_key = mem['uid']
                 with st.container(border=True):
