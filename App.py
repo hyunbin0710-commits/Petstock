@@ -242,33 +242,33 @@ else:
             price_text = "조회 불가"
             return_text = f"<span style='color:gray; font-size:12px;'>(현재 등록된 티커: {ticker_symbol if ticker_symbol else '없음'})</span>"
             
-        # 💡 [핵심 업데이트] 파란색 정보창(st.info)을 지우고, 앨범 내용을 HTML로 예쁘게 만들어서 하얀 카드 안으로 쏙 넣습니다.
+        # 💡 [핵심 수정] HTML 태그 앞의 들여쓰기를 모두 제거하여 마크다운이 코드로 오해하지 않게 만들었습니다.
         memories_html = ""
         for mem in info['memories']:
             title = mem.get('title', '')
             date = mem.get('date', '')
             memo = mem.get('memo', '')
             memories_html += f"""
-            <div style="background-color:#F8F9FA; padding:15px; border-radius:10px; margin-top:10px; border-left: 4px solid #EAEAEA;">
-                <div style="font-size:14px; color:#333; font-weight:bold;">{title} <span style="font-size:12px; color:#888; font-weight:normal; margin-left:5px;">({date})</span></div>
-                <div style="font-size:14px; color:#555; margin-top:8px; line-height:1.5;">"{memo}"</div>
-            </div>
-            """
+<div style="background-color:#F8F9FA; padding:15px; border-radius:10px; margin-top:10px; border-left: 4px solid #EAEAEA;">
+<div style="font-size:14px; color:#333; font-weight:bold;">{title} <span style="font-size:12px; color:#888; font-weight:normal; margin-left:5px;">({date})</span></div>
+<div style="font-size:14px; color:#555; margin-top:8px; line-height:1.5;">"{memo}"</div>
+</div>
+"""
             
         st.markdown(f"""
-        <div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
-            <p style="font-size:16px; color:#555;">
-                <b>보유 수량:</b> {info['total_qty']:,.2f}주 &nbsp;|&nbsp; 
-                <b>평단가:</b> {avg_price:,.2f} &nbsp;|&nbsp; 
-                <b>현재가:</b> {price_text} &nbsp;|&nbsp; 
-                <b>수익률:</b> {return_text}
-            </p>
-            <hr style="border:1px solid #EAEAEA;">
-            <p style="font-size:14px; color:#888; margin-bottom:10px;">나의 입양 기록 📝</p>
-            {memories_html}
-        </div>
-        """, unsafe_allow_html=True)
+<div style="background-color:#ffffff; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h3 style="margin-top:0px; color:#1E1E1E;">🌱 {name}</h3>
+<p style="font-size:16px; color:#555;">
+<b>보유 수량:</b> {info['total_qty']:,.2f}주 &nbsp;|&nbsp; 
+<b>평단가:</b> {avg_price:,.2f} &nbsp;|&nbsp; 
+<b>현재가:</b> {price_text} &nbsp;|&nbsp; 
+<b>수익률:</b> {return_text}
+</p>
+<hr style="border:1px solid #EAEAEA;">
+<p style="font-size:14px; color:#888; margin-bottom:10px;">나의 입양 기록 📝</p>
+{memories_html}
+</div>
+""", unsafe_allow_html=True)
         
         if error_msg and ticker_symbol:
             st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
