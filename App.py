@@ -131,7 +131,6 @@ if uploaded_file is not None:
                 col_qty = find_col(df.columns, ['수량', '체결수량'])
                 col_price = find_col(df.columns, ['거래금액', '정산금액', '약정금액', '매수금액'])
                 
-                # 💡 추후 API 연동 시 전량 매도를 자동 판별하기 위한 뼈대 구조입니다.
                 if col_type:
                     buys_df = df[df[col_type].astype(str).str.contains('매수')].copy()
                 else:
@@ -251,23 +250,22 @@ else:
             if current_price == 0:
                 error_msg = "가격을 불러오지 못했습니다. 티커가 정확한지 확인해주세요."
                 
-        # 💡 [핵심 업데이트] 이모지와 실제 수익률 숫자를 함께 표시합니다.
+        # 💡 [핵심] 불필요한 감성 텍스트를 제거하고 심플하게 %만 표시
         if current_price > 0 and avg_price > 0:
             return_rate = ((current_price - avg_price) / avg_price) * 100
             if return_rate > 0:
-                mood_html = f'<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">+{return_rate:.1f}% (따뜻해요!)</span>'
+                mood_html = f'<span style="font-size:20px;">🥰</span> <span style="color:#FF7B7B; font-weight:bold; font-size:15px; margin-left:5px;">+{return_rate:.1f}%</span>'
                 point_color = "#FF9AA2"
             elif return_rate < 0:
-                mood_html = f'<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">{return_rate:.1f}% (슬퍼요...)</span>'
+                mood_html = f'<span style="font-size:20px;">😭</span> <span style="color:#6B90D8; font-weight:bold; font-size:15px; margin-left:5px;">{return_rate:.1f}%</span>'
                 point_color = "#A2C2FF"
             else:
-                mood_html = f'<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">0.0% (평온함)</span>'
+                mood_html = f'<span style="font-size:20px;">🤔</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">0.0%</span>'
                 point_color = "#EAEAEA"
         else:
-            mood_html = '<span style="font-size:20px;">💤</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">(현재가 모름)</span>'
+            mood_html = '<span style="font-size:20px;">💤</span> <span style="color:#888888; font-weight:bold; font-size:15px; margin-left:5px;">-</span>'
             point_color = "#EAEAEA"
             
-        # 💡 [핵심 업데이트] 줄바꿈(엔터)을 완벽히 제거하여 마크다운 렌더링 오류(검은 화면)를 방지합니다.
         memories_html = ""
         for mem in info['memories']:
             title = mem.get('title', '')
@@ -275,7 +273,6 @@ else:
             memo = mem.get('memo', '')
             memories_html += f'<div style="background-color:#FFFFFF; padding:15px; border-radius:12px; margin-top:12px; border-left: 5px solid {point_color}; box-shadow: 0 2px 5px rgba(0,0,0,0.02);"><div style="font-size:14px; color:#4A4A4A; font-weight:bold;">{title} <span style="font-size:12px; color:#A0A0A0; font-weight:normal; margin-left:8px;">{date}</span></div><div style="font-size:14px; color:#666666; margin-top:8px; line-height:1.6; font-style:italic;">"{memo}"</div></div>'
             
-        # "나의 입양 기록" 텍스트 삭제 및 깔끔한 HTML 구조 유지
         html_card = f"""<div style="background-color:#FAF8F5; padding:25px; border-radius:20px; margin-bottom:25px; box-shadow:0px 4px 10px rgba(0,0,0,0.05); border:1px solid #EFEBE4;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;"><h3 style="margin:0; color:#5C4B4B; font-size:22px;">🪴 {name}</h3><div style="background-color:#FFEAEA; color:#D86B6B; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:bold;">{days_text}</div></div><div style="color:#6D6060; font-size:15px; margin-bottom:20px; line-height:1.8;"><b>보유 수량:</b> {info['total_qty']:,.2f}주 <br><b>평단가:</b> {avg_price:,.2f} <span style="margin: 0 10px; color:#D5D5D5;">|</span> <b>현재가:</b> {current_price:,.2f} <br><div style="margin-top:12px; padding:10px 15px; background-color:#FFFFFF; border-radius:12px; display:inline-block; border:1px dashed #E5E0D8;"><b>오늘의 기분:</b> {mood_html}</div></div><div style="border-top:2px dashed #EFEBE4; padding-top:15px;">{memories_html}</div></div>"""
         
         st.markdown(html_card, unsafe_allow_html=True)
@@ -283,10 +280,27 @@ else:
         if error_msg and ticker_symbol:
             st.error(f"⚠️ 현재가 업데이트 실패: {error_msg}")
         
-        with st.expander(f"⚙️ '{name}' 티커 설정"):
+        # 💡 [핵심] 설정 메뉴 안에 티커 변경뿐만 아니라 '기록(이름, 메모) 수정' 기능을 추가했습니다.
+        with st.expander(f"⚙️ '{name}' 설정 (티커 및 기록 수정)"):
+            st.markdown("**1. 티커(종목코드) 수정**")
             with st.form(key=f"rescue_{name}"):
-                new_ticker = st.text_input("수동 변경 (자동 인식 오류 시 사용)", value=ticker_symbol, key=f"input_{name}")
-                if st.form_submit_button("티커 저장/수정"):
+                new_ticker = st.text_input("수동 변경", value=ticker_symbol, key=f"input_{name}")
+                if st.form_submit_button("티커 저장"):
                     ticker_db[name] = new_ticker.strip().upper()
                     save_ticker_db(ticker_db)
                     st.rerun()
+            
+            st.markdown("---")
+            st.markdown("**2. 내 기록 수정**")
+            # 현재 종목에 해당하는 기록(메모)들만 모아서 수정 폼을 제공합니다.
+            for uid_key, data_val in db.items():
+                if data_val['name'] == name:
+                    with st.form(key=f"edit_{uid_key}"):
+                        st.caption(f"📅 매수일: {data_val['date']} | 💰 수량: {data_val['qty']}주")
+                        new_title = st.text_input("이름 (타이틀)", value=data_val.get('title', ''))
+                        new_memo = st.text_area("추억/다짐 (메모)", value=data_val.get('memo', ''))
+                        if st.form_submit_button("기록 수정 저장"):
+                            db[uid_key]['title'] = new_title
+                            db[uid_key]['memo'] = new_memo
+                            save_db(db)
+                            st.rerun()
